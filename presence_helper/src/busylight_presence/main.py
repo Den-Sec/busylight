@@ -1,23 +1,21 @@
 """Entry point for the BusyLight Presence helper.
 
-Polls the microphone state every ``poll_seconds`` and reflects it on
-the configured BusyLight:
+Default mode runs as a tray-icon app (see `tray.py`). Pass `--no-tray`
+to run the original console-only loop, handy for CI / cron / first-time
+debugging on a host where Tk or pystray won't import.
 
-  mic_active == True  -> set state to IN_CALL
-  mic_active == False -> restore the last "manual" state the user
-                         set via the web UI (snapshot taken at startup
-                         and re-fetched whenever it changes outside of
-                         our own IN_CALL toggle)
-
-Designed to be a 60-line state machine over a polling loop. No tray
-icon, no GUI; that lives in ``tray.py`` (added later). For now the
-helper runs in a console window and logs to stdout.
+Polling cadence:
+  - mic_active == True  -> push IN_CALL to the device
+  - mic_active == False -> restore the last "manual" state the user
+                           set via the web UI (re-learned whenever the
+                           device's state changes outside of the helper)
 """
 
 from __future__ import annotations
 
 import argparse
 import logging
+import os
 import signal
 import sys
 import time
@@ -55,10 +53,25 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Read mic state once, push it, and exit. Useful for cron / testing.",
     )
     p.add_argument(
-        "--verbose",
-        "-v",
+        "--no-tray",
         action="store_true",
-        help="Debug logging.",
+        help="Run as a console loop instead of a tray app.",
+    )
+    p.add_argument(
+        "--install-startup",
+        action="store_true",
+        help=(
+            "Register the helper to launch at Windows login (writes a "
+            "Run key under HKCU). Exits immediately after."
+        ),
+    )
+    p.add_argument(
+        "--uninstall-startup",
+        action="store_true",
+        help="Remove the auto-start registry entry, then exit.",
+    )
+    p.add_argument(
+        "--verbose", "-v", action="store_true", help="Debug logging."
     )
     p.add_argument(
         "--version",
@@ -77,17 +90,19 @@ def _setup_logging(verbose: bool) -> None:
     )
 
 
+# ---------------------------------------------------------------------------
+# Polling loop (shared by both console + tray front-ends)
+# ---------------------------------------------------------------------------
+
 class PresenceLoop:
+    """Stateless apart from the manual-state baseline; safe to drive from
+    a console while() or a worker thread under pystray."""
+
     def __init__(self, cfg: PresenceConfig, client: BusyLightClient) -> None:
         self.cfg = cfg
         self.client = client
         self.running = True
 
-        # The state the user picked manually. We restore this when the
-        # mic becomes idle. We refresh it from the device whenever we
-        # see "the current state on the device is NOT IN_CALL and NOT
-        # the one we last set", which means the user (or another
-        # controller) overrode us.
         self.last_manual_state: str = cfg.default_state
         self.last_pushed_state: str | None = None
         self.last_mic_in_use: bool | None = None
@@ -96,11 +111,18 @@ class PresenceLoop:
         log.info("shutting down")
         self.running = False
 
+    def update_config(self, cfg: PresenceConfig) -> None:
+        """Apply a new config (host or PIN may have changed)."""
+        if cfg.host != self.cfg.host or cfg.pin != self.cfg.pin:
+            self.client = BusyLightClient(host=cfg.host, pin=cfg.pin)
+            try:
+                self.client.login()
+            except (BusyLightAuthError, BusyLightNetworkError) as e:
+                log.warning("re-login after config change failed: %s", e)
+        self.cfg = cfg
+
     def tick(self) -> None:
         usage = microphone_in_use()
-        # Read the current state on the device. If a human pressed a
-        # button in the web UI we want to honour it next time the mic
-        # goes idle.
         try:
             current = self.client.get_state()
         except BusyLightNetworkError as e:
@@ -116,15 +138,11 @@ class PresenceLoop:
 
         if current and current != "IN_CALL":
             if self.last_pushed_state != current:
-                # Someone changed it outside of us — remember as the
-                # baseline to restore.
                 self.last_manual_state = current
                 log.debug("learnt manual state -> %s", current)
 
         desired = "IN_CALL" if usage.in_use else self.last_manual_state
 
-        # Only push when the desired state differs from what we
-        # observed; this avoids hammering NVS on the device.
         if current == desired:
             self.last_pushed_state = desired
             self._log_transition(usage)
@@ -156,15 +174,121 @@ class PresenceLoop:
         )
 
 
+# ---------------------------------------------------------------------------
+# Auto-start install / uninstall
+# ---------------------------------------------------------------------------
+
+def _registry_run_path() -> str:
+    return r"Software\Microsoft\Windows\CurrentVersion\Run"
+
+
+def _registry_value_name() -> str:
+    return "BusyLightPresence"
+
+
+def _install_startup() -> int:
+    if sys.platform != "win32":
+        print("--install-startup is Windows-only.", file=sys.stderr)
+        return 2
+    import winreg
+
+    if getattr(sys, "frozen", False):
+        target = f'"{sys.executable}"'
+    else:
+        # Run via "python -m busylight_presence" so the venv stays in scope.
+        py = sys.executable
+        target = f'"{py}" -m busylight_presence'
+
+    with winreg.OpenKey(
+        winreg.HKEY_CURRENT_USER,
+        _registry_run_path(),
+        0,
+        winreg.KEY_SET_VALUE,
+    ) as key:
+        winreg.SetValueEx(
+            key, _registry_value_name(), 0, winreg.REG_SZ, target
+        )
+    print(f"Registered to launch at login: {target}")
+    return 0
+
+
+def _uninstall_startup() -> int:
+    if sys.platform != "win32":
+        print("--uninstall-startup is Windows-only.", file=sys.stderr)
+        return 2
+    import winreg
+
+    try:
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            _registry_run_path(),
+            0,
+            winreg.KEY_SET_VALUE,
+        ) as key:
+            winreg.DeleteValue(key, _registry_value_name())
+        print("Removed login auto-start entry.")
+    except FileNotFoundError:
+        print("Auto-start entry was not present; nothing to do.")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Front-ends
+# ---------------------------------------------------------------------------
+
+def _run_console(loop: PresenceLoop) -> int:
+    signal.signal(signal.SIGINT, loop.stop)
+    if hasattr(signal, "SIGTERM"):
+        signal.signal(signal.SIGTERM, loop.stop)
+    log.info(
+        "watching %s every %.1fs (baseline state: %s)",
+        loop.cfg.host,
+        loop.cfg.poll_seconds,
+        loop.last_manual_state,
+    )
+    while loop.running:
+        try:
+            loop.tick()
+        except Exception as e:  # noqa: BLE001
+            log.exception("unhandled error in tick: %s", e)
+        time.sleep(loop.cfg.poll_seconds)
+    return 0
+
+
+def _run_tray(loop: PresenceLoop) -> int:
+    try:
+        from .tray import TrayApp
+    except ImportError as e:
+        log.error(
+            "tray dependencies missing (%s) — falling back to console.", e
+        )
+        return _run_console(loop)
+
+    def on_settings_saved(cfg: PresenceConfig) -> None:
+        loop.update_config(cfg)
+
+    tray = TrayApp(loop, on_settings_saved=on_settings_saved)
+    tray.run()
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Entry
+# ---------------------------------------------------------------------------
+
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     _setup_logging(args.verbose)
 
+    if args.install_startup:
+        return _install_startup()
+    if args.uninstall_startup:
+        return _uninstall_startup()
+
     if not supported_platform():
         log.warning(
             "presence detection is currently Windows-only; on other "
-            "platforms the helper will not flip the light. Use the web "
-            "UI to set the state manually."
+            "platforms the helper will not flip the light."
         )
 
     try:
@@ -173,13 +297,18 @@ def main(argv: list[str] | None = None) -> int:
     except (FileNotFoundError, ValueError) as e:
         log.error("config: %s", e)
         log.error(
-            "Create %s with at least:\n"
-            "  [busylight]\n"
-            "  host = busylight-XXXX.local\n"
-            "  pin  = 1234\n"
-            "or set the BUSYLIGHT_HOST and BUSYLIGHT_PIN env vars.",
-            args.config or "<your config path>",
+            "Open the tray icon → Settings, or create the config file "
+            "manually. Example:\n  [busylight]\n  host = busylight-XXXX.local"
+            "\n  pin  = 1234"
         )
+        # If running in tray mode and config is missing/invalid, still launch
+        # the tray so the user can open Settings and configure it.
+        if not args.no_tray:
+            # Build a stub loop with no client and let the tray app open
+            # the settings window.
+            stub_client = BusyLightClient(host=cfg.host or "x", pin=cfg.pin or "0000")
+            loop = PresenceLoop(cfg, stub_client)
+            return _run_tray(loop)
         return 2
 
     client = BusyLightClient(host=cfg.host, pin=cfg.pin)
@@ -187,13 +316,19 @@ def main(argv: list[str] | None = None) -> int:
         client.login()
     except BusyLightAuthError as e:
         log.error("login failed: %s", e)
+        if not args.no_tray:
+            loop = PresenceLoop(cfg, client)
+            return _run_tray(loop)
         return 3
     except BusyLightNetworkError as e:
         log.error("cannot reach BusyLight at %s: %s", cfg.host, e)
+        if not args.no_tray:
+            loop = PresenceLoop(cfg, client)
+            return _run_tray(loop)
         return 4
 
     loop = PresenceLoop(cfg, client)
-    # Capture the device's current state as the baseline manual state.
+
     try:
         current = client.get_state()
         if current and current != "IN_CALL":
@@ -202,29 +337,13 @@ def main(argv: list[str] | None = None) -> int:
     except (BusyLightAuthError, BusyLightNetworkError):
         pass
 
-    signal.signal(signal.SIGINT, loop.stop)
-    if hasattr(signal, "SIGTERM"):
-        signal.signal(signal.SIGTERM, loop.stop)
-
-    log.info(
-        "watching %s every %.1fs (baseline state: %s)",
-        cfg.host,
-        cfg.poll_seconds,
-        loop.last_manual_state,
-    )
-
     if args.once:
         loop.tick()
         return 0
 
-    while loop.running:
-        try:
-            loop.tick()
-        except Exception as e:  # noqa: BLE001
-            log.exception("unhandled error in tick: %s", e)
-        time.sleep(cfg.poll_seconds)
-
-    return 0
+    if args.no_tray:
+        return _run_console(loop)
+    return _run_tray(loop)
 
 
 if __name__ == "__main__":

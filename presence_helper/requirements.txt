@@ -1,4 +1,8 @@
 # BusyLight Presence runtime dependencies.
-# Everything we use on Windows ships in CPython's stdlib (winreg,
-# urllib, http.cookiejar, configparser). No third-party deps for the
-# core helper. The tray icon (added later) brings pystray + Pillow.
+#
+# Core helper relies only on CPython stdlib (winreg, urllib,
+# http.cookiejar, configparser). The optional tray-app shell adds
+# pystray + Pillow so users get a system-tray icon and a settings
+# window instead of a console. Both are pure-Python wheels on PyPI.
+pystray>=0.19
+Pillow>=10.0

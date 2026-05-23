@@ -9,9 +9,17 @@ if (-not (Test-Path ".venv")) {
 & .\.venv\Scripts\python.exe -m pip install --upgrade pip
 & .\.venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt pyinstaller
 
-# console=true so users can see the helper's logs in a terminal window.
-# When we add the tray icon we'll flip this to noconsole and surface
-# a log file instead.
-& .\.venv\Scripts\pyinstaller.exe --onefile --name BusyLightPresence src\busylight_presence\main.py
+# --noconsole: the helper is a tray app, the user never needs a console
+# window. Logs still go to stdout when launched from a terminal.
+& .\.venv\Scripts\pyinstaller.exe `
+  --onefile `
+  --noconsole `
+  --name BusyLightPresence `
+  --collect-data pystray `
+  src\busylight_presence\main.py
 
+Write-Host ""
 Write-Host "Built dist\BusyLightPresence.exe"
+Write-Host ""
+Write-Host "To auto-launch at login:"
+Write-Host "  dist\BusyLightPresence.exe --install-startup"
