@@ -1,3 +1,299 @@
+// ============ i18n ============
+//
+// All user-facing strings live here. Bilingual: English + Italian.
+// HTML uses the data-i18n="key" attribute for static text, data-i18n-attr
+// for attributes like placeholder. JS uses t("key") at call sites.
+
+const I18N = {
+  en: {
+    "brand.sub": "Status light",
+    "topbar.online": "Online",
+    "topbar.signout": "Sign out",
+
+    "login.kicker": "Authenticate",
+    "login.title": "Welcome back.",
+    "login.lede":
+      "This BusyLight is paired to your network. Enter the PIN you set during setup to take control.",
+    "login.access_pin": "Access PIN",
+    "login.placeholder": "4–8 digits",
+    "login.unlock": "Unlock",
+    "login.error.invalid_format": "PIN must be 4 to 8 digits.",
+
+    "hero.kicker": "Currently",
+
+    "states.AVAILABLE.name": "Available",
+    "states.BUSY.name": "Busy",
+    "states.IN_CALL.name": "In a call",
+    "states.AWAY.name": "Away",
+    "states.WIFI_ERROR.name": "No Wi-Fi",
+
+    "states.AVAILABLE.tag": "Come on in — the light is on.",
+    "states.BUSY.tag":
+      "Solid red. People at the door will know to wait.",
+    "states.IN_CALL.tag":
+      "Blinking red. A call or meeting is in progress.",
+    "states.AWAY.tag":
+      "Blinking green. Stepped away, back soon.",
+    "states.WIFI_ERROR.tag":
+      "Can't reach the network — check Wi-Fi credentials.",
+
+    "states.AVAILABLE.desc": "Solid green · door open",
+    "states.BUSY.desc": "Solid red · focus mode",
+    "states.IN_CALL.desc": "Red blink · meeting",
+    "states.AWAY.desc": "Green blink · stepped out",
+
+    "set_state.title": "Set state",
+    "set_state.sub": "Tap to switch the desk light",
+    "set_state.updating": "Updating…",
+
+    "device.title": "Device",
+    "device.sub": "Read-only",
+    "device.hostname": "Hostname",
+    "device.address": "Address",
+    "device.local_ip": "Local IP",
+    "device.wifi": "Wi-Fi",
+    "device.firmware": "Firmware",
+    "device.uptime": "Uptime",
+
+    "access.title": "Access",
+    "access.sub": "Change PIN",
+    "access.current_pin": "Current PIN",
+    "access.new_pin": "New PIN",
+    "access.rotate": "Rotate PIN",
+    "access.changed": "PIN rotated. The old PIN is no longer accepted.",
+    "access.error.invalid_format": "New PIN must be 4 to 8 digits.",
+
+    "ota.title": "Firmware",
+    "ota.sub": "Optional",
+    "ota.lede":
+      "Upload a new .bin compiled for the ESP32-C6. It writes to the inactive slot and reboots into it. Bad images can always be recovered over USB.",
+    "ota.no_file": "No file selected",
+    "ota.choose": "Choose .bin",
+    "ota.upload": "Upload & reboot",
+    "ota.uploading": "Uploading…",
+    "ota.complete":
+      "Upload complete. Device rebooting. Reload the page in about 30 seconds.",
+    "ota.no_bin": "Pick a firmware .bin file first.",
+    "ota.network_error": "Network error during upload.",
+    "ota.failed": "Upload failed:",
+
+    "maint.title": "Maintenance",
+    "maint.sub": "Use with care",
+    "maint.restart.title": "Restart device",
+    "maint.restart.desc": "Reboots without touching Wi-Fi or PIN.",
+    "maint.restart.btn": "Restart",
+    "maint.restart.confirm":
+      "Reboot BusyLight now? You will lose the session.",
+    "maint.restart.requested":
+      "Reboot requested. Reload the page in about 15 seconds.",
+    "maint.factory.title": "Factory reset",
+    "maint.factory.desc":
+      "Wipes Wi-Fi and PIN. A USB cable is required to provision the device again.",
+    "maint.factory.btn": "Reset",
+    "maint.factory.confirm":
+      "Factory reset wipes Wi-Fi credentials AND the PIN. After this you can only reprovision over USB. Continue?",
+    "maint.factory.rejected": "Factory reset rejected:",
+    "maint.factory.requested":
+      "Factory reset confirmed. Device rebooting.",
+
+    "foot.source": "Source ↗",
+
+    "errors.invalid_pin": "Wrong PIN.",
+    "errors.locked_out":
+      "Too many attempts. Try again in 60 seconds.",
+    "errors.csrf_invalid": "Session expired. Sign in again.",
+    "errors.unauthorized": "Session expired. Sign in again.",
+    "errors.invalid_payload": "Malformed request.",
+    "errors.invalid_state": "Unknown state value.",
+    "errors.invalid_current_pin": "Current PIN does not match.",
+    "errors.pin_length": "PIN must be 4–8 digits.",
+    "errors.pin_digits_only": "PIN must be digits only.",
+    "errors.confirm_required": "Confirmation header missing.",
+    "errors.unauthorized_ota": "Authentication failed for OTA.",
+    "errors.image_too_small": "Firmware too small to be valid.",
+    "errors.update_begin_failed": "Could not allocate OTA slot.",
+    "errors.update_end_failed": "Final write failed; reboot to recover.",
+    "errors.write_failed": "Write failed mid-upload.",
+  },
+
+  it: {
+    "brand.sub": "Luce di stato",
+    "topbar.online": "Online",
+    "topbar.signout": "Esci",
+
+    "login.kicker": "Autenticazione",
+    "login.title": "Bentornato.",
+    "login.lede":
+      "Questo BusyLight è associato alla tua rete. Inserisci il PIN impostato in fase di setup per prendere il controllo.",
+    "login.access_pin": "PIN di accesso",
+    "login.placeholder": "4–8 cifre",
+    "login.unlock": "Sblocca",
+    "login.error.invalid_format": "Il PIN deve avere da 4 a 8 cifre.",
+
+    "hero.kicker": "Stato attuale",
+
+    "states.AVAILABLE.name": "Disponibile",
+    "states.BUSY.name": "Occupato",
+    "states.IN_CALL.name": "In chiamata",
+    "states.AWAY.name": "Assente",
+    "states.WIFI_ERROR.name": "Senza Wi-Fi",
+
+    "states.AVAILABLE.tag":
+      "Vieni pure — la luce è verde.",
+    "states.BUSY.tag":
+      "Rosso fisso. Chi passa dalla porta saprà che è meglio attendere.",
+    "states.IN_CALL.tag":
+      "Rosso lampeggiante. Sei in una chiamata o riunione.",
+    "states.AWAY.tag":
+      "Verde lampeggiante. Sei via, torni a breve.",
+    "states.WIFI_ERROR.tag":
+      "Rete irraggiungibile — controlla le credenziali Wi-Fi.",
+
+    "states.AVAILABLE.desc": "Verde fisso · porta aperta",
+    "states.BUSY.desc": "Rosso fisso · modalità focus",
+    "states.IN_CALL.desc": "Lampeggio rosso · riunione",
+    "states.AWAY.desc": "Lampeggio verde · sono via",
+
+    "set_state.title": "Imposta stato",
+    "set_state.sub": "Tocca per cambiare la luce sulla scrivania",
+    "set_state.updating": "Aggiorno…",
+
+    "device.title": "Dispositivo",
+    "device.sub": "Solo lettura",
+    "device.hostname": "Hostname",
+    "device.address": "Indirizzo",
+    "device.local_ip": "IP locale",
+    "device.wifi": "Wi-Fi",
+    "device.firmware": "Firmware",
+    "device.uptime": "Attivo da",
+
+    "access.title": "Accesso",
+    "access.sub": "Cambia PIN",
+    "access.current_pin": "PIN attuale",
+    "access.new_pin": "Nuovo PIN",
+    "access.rotate": "Cambia PIN",
+    "access.changed":
+      "PIN aggiornato. Il vecchio PIN non è più valido.",
+    "access.error.invalid_format":
+      "Il nuovo PIN deve avere da 4 a 8 cifre.",
+
+    "ota.title": "Firmware",
+    "ota.sub": "Opzionale",
+    "ota.lede":
+      "Carica un nuovo .bin compilato per ESP32-C6. Viene scritto nello slot inattivo e il dispositivo riparte da quello. Una immagine difettosa si recupera sempre via USB.",
+    "ota.no_file": "Nessun file selezionato",
+    "ota.choose": "Scegli .bin",
+    "ota.upload": "Carica e riavvia",
+    "ota.uploading": "Carico…",
+    "ota.complete":
+      "Caricamento completato. Riavvio in corso. Ricarica la pagina tra circa 30 secondi.",
+    "ota.no_bin": "Seleziona prima un file .bin.",
+    "ota.network_error": "Errore di rete durante il caricamento.",
+    "ota.failed": "Caricamento fallito:",
+
+    "maint.title": "Manutenzione",
+    "maint.sub": "Usare con attenzione",
+    "maint.restart.title": "Riavvia il dispositivo",
+    "maint.restart.desc":
+      "Riavvia senza toccare le credenziali Wi-Fi o il PIN.",
+    "maint.restart.btn": "Riavvia",
+    "maint.restart.confirm":
+      "Riavvio BusyLight ora? Perderai la sessione corrente.",
+    "maint.restart.requested":
+      "Riavvio richiesto. Ricarica la pagina tra circa 15 secondi.",
+    "maint.factory.title": "Reset di fabbrica",
+    "maint.factory.desc":
+      "Cancella Wi-Fi e PIN. Per riprovvigionare il dispositivo serve il cavo USB.",
+    "maint.factory.btn": "Reset",
+    "maint.factory.confirm":
+      "Il reset di fabbrica cancella le credenziali Wi-Fi E il PIN. Dopo questa operazione potrai riprovvigionare solo via USB. Continuare?",
+    "maint.factory.rejected": "Reset di fabbrica rifiutato:",
+    "maint.factory.requested":
+      "Reset di fabbrica confermato. Dispositivo in riavvio.",
+
+    "foot.source": "Sorgente ↗",
+
+    "errors.invalid_pin": "PIN errato.",
+    "errors.locked_out":
+      "Troppi tentativi. Riprova fra 60 secondi.",
+    "errors.csrf_invalid": "Sessione scaduta. Accedi di nuovo.",
+    "errors.unauthorized": "Sessione scaduta. Accedi di nuovo.",
+    "errors.invalid_payload": "Richiesta malformata.",
+    "errors.invalid_state": "Stato non valido.",
+    "errors.invalid_current_pin": "Il PIN attuale non corrisponde.",
+    "errors.pin_length": "Il PIN deve avere da 4 a 8 cifre.",
+    "errors.pin_digits_only": "Il PIN deve contenere solo cifre.",
+    "errors.confirm_required": "Manca l'header di conferma.",
+    "errors.unauthorized_ota": "Autenticazione OTA fallita.",
+    "errors.image_too_small": "Firmware troppo piccolo per essere valido.",
+    "errors.update_begin_failed": "Impossibile allocare lo slot OTA.",
+    "errors.update_end_failed":
+      "Scrittura finale fallita; riavvia per recuperare.",
+    "errors.write_failed": "Scrittura fallita a metà upload.",
+  },
+};
+
+const LANG_STORAGE_KEY = "busylight.lang";
+
+function detectInitialLang() {
+  try {
+    const saved = localStorage.getItem(LANG_STORAGE_KEY);
+    if (saved && I18N[saved]) return saved;
+  } catch {
+    // localStorage may be blocked
+  }
+  const nav = (navigator.language || "en").toLowerCase();
+  if (nav.startsWith("it")) return "it";
+  return "en";
+}
+
+let currentLang = detectInitialLang();
+
+function t(key) {
+  const bundle = I18N[currentLang] || I18N.en;
+  return bundle[key] ?? I18N.en[key] ?? key;
+}
+
+function applyI18n(root = document) {
+  root.querySelectorAll("[data-i18n]").forEach((el) => {
+    el.textContent = t(el.dataset.i18n);
+  });
+  root.querySelectorAll("[data-i18n-attr]").forEach((el) => {
+    el.dataset.i18nAttr.split(",").forEach((pair) => {
+      const [attr, key] = pair.split(":").map((s) => s.trim());
+      if (attr && key) el.setAttribute(attr, t(key));
+    });
+  });
+  document.documentElement.lang = currentLang;
+}
+
+function setLang(lang) {
+  if (!I18N[lang]) return;
+  currentLang = lang;
+  try {
+    localStorage.setItem(LANG_STORAGE_KEY, lang);
+  } catch {
+    // ignore
+  }
+  applyI18n();
+  document
+    .querySelectorAll("[data-lang-btn]")
+    .forEach((btn) =>
+      btn.classList.toggle("active", btn.dataset.langBtn === lang)
+    );
+  // re-render dynamic strings
+  refreshDynamicLabels();
+}
+
+function refreshDynamicLabels() {
+  if (statusOrb && statusOrb.dataset.state) {
+    setStateUi(statusOrb.dataset.state);
+  }
+  if (otaFilename && !otaFile.files?.length) {
+    otaFilename.textContent = t("ota.no_file");
+  }
+}
+
 // ============ DOM refs ============
 const loginCard = document.getElementById("login-card");
 const consoleGrid = document.getElementById("console-grid");
@@ -86,27 +382,11 @@ async function api(path, options = {}) {
   return json;
 }
 
-const ERROR_LABELS = {
-  invalid_pin: "Wrong PIN.",
-  locked_out: "Too many attempts. Try again in 60 seconds.",
-  csrf_invalid: "Session expired. Sign in again.",
-  unauthorized: "Session expired. Sign in again.",
-  invalid_payload: "Malformed request.",
-  invalid_state: "Unknown state value.",
-  invalid_current_pin: "Current PIN does not match.",
-  pin_length: "PIN must be 4-8 digits.",
-  pin_digits_only: "PIN must be digits only.",
-  confirm_required: "Confirmation header missing.",
-  unauthorized_ota: "Authentication failed for OTA.",
-  image_too_small: "Firmware too small to be valid.",
-  update_begin_failed: "Could not allocate OTA slot.",
-  update_end_failed: "Final write failed; reboot to recover.",
-  write_failed: "Write failed mid-upload.",
-};
-
 function humanError(code) {
   if (!code) return null;
-  return ERROR_LABELS[code] || code;
+  const key = `errors.${code}`;
+  // If we have a translation, use it; otherwise fall back to the raw code.
+  return t(key) === key ? code : t(key);
 }
 
 function formatUptime(ms) {
@@ -142,27 +422,11 @@ function showLogin() {
   logoutBtn.classList.add("hidden");
 }
 
-const STATE_LABEL = {
-  AVAILABLE: "Available",
-  BUSY: "Busy",
-  IN_CALL: "In a call",
-  AWAY: "Away",
-  WIFI_ERROR: "No Wi-Fi",
-};
-
-const STATE_TAGLINE = {
-  AVAILABLE: "Come on in — the light is on.",
-  BUSY: "Solid red. People at the door will know to wait.",
-  IN_CALL: "Blinking red. A call or meeting is in progress.",
-  AWAY: "Blinking green. Stepped away, back soon.",
-  WIFI_ERROR: "Can't reach the network — check Wi-Fi credentials.",
-};
-
 function setStateUi(state) {
   if (!state) return;
-  currentState.textContent = STATE_LABEL[state] || state;
+  currentState.textContent = t(`states.${state}.name`);
   if (statusOrb) statusOrb.dataset.state = state;
-  if (heroSub) heroSub.textContent = STATE_TAGLINE[state] || "";
+  if (heroSub) heroSub.textContent = t(`states.${state}.tag`);
   document.querySelectorAll(".tile, .state").forEach((btn) => {
     if (btn.dataset.state === state) btn.classList.add("active");
     else btn.classList.remove("active");
@@ -227,7 +491,7 @@ loginBtn.addEventListener("click", async () => {
   loginMsg.textContent = "";
   const pin = pinInput.value.trim();
   if (!/^\d{4,8}$/.test(pin)) {
-    loginMsg.textContent = "PIN must be 4 to 8 digits.";
+    loginMsg.textContent = t("login.error.invalid_format");
     return;
   }
   try {
@@ -250,7 +514,7 @@ pinInput.addEventListener("keydown", (e) => {
 document.querySelectorAll(".tile, .state").forEach((btn) => {
   btn.addEventListener("click", async () => {
     const state = btn.dataset.state;
-    if (stateMsg) stateMsg.textContent = "Updating…";
+    if (stateMsg) stateMsg.textContent = t("set_state.updating");
     try {
       await api("/api/state", {
         method: "POST",
@@ -278,7 +542,7 @@ changePinBtn.addEventListener("click", async () => {
   const current_pin = currentPin.value.trim();
   const new_pin = newPin.value.trim();
   if (!/^\d{4,8}$/.test(new_pin)) {
-    pinMsg.textContent = "New PIN must be 4 to 8 digits.";
+    pinMsg.textContent = t("access.error.invalid_format");
     return;
   }
   try {
@@ -288,17 +552,17 @@ changePinBtn.addEventListener("click", async () => {
     });
     currentPin.value = "";
     newPin.value = "";
-    pinMsg.textContent = "PIN rotated. The old PIN is no longer accepted.";
+    pinMsg.textContent = t("access.changed");
   } catch (err) {
     pinMsg.textContent = err.message;
   }
 });
 
 rebootBtn.addEventListener("click", async () => {
-  if (!confirm("Reboot BusyLight now? You will lose the session.")) return;
+  if (!confirm(t("maint.restart.confirm"))) return;
   try {
     await api("/api/device/reboot", { method: "POST" });
-    stateMsg.textContent = "Reboot requested. Reload the page in ~15 seconds.";
+    stateMsg.textContent = t("maint.restart.requested");
   } catch (err) {
     stateMsg.textContent = err.message;
   }
@@ -306,10 +570,7 @@ rebootBtn.addEventListener("click", async () => {
 
 if (factoryResetBtn) {
   factoryResetBtn.addEventListener("click", async () => {
-    const ok = confirm(
-      "Factory reset wipes Wi-Fi credentials AND the PIN. After this you can only reprovision over USB. Continue?"
-    );
-    if (!ok) return;
+    if (!confirm(t("maint.factory.confirm"))) return;
     try {
       const response = await fetch("/api/device/factory_reset", {
         method: "POST",
@@ -329,17 +590,15 @@ if (factoryResetBtn) {
         } catch {
           // ignore
         }
-        stateMsg.textContent = `Factory reset rejected: ${detail}`;
+        stateMsg.textContent = `${t("maint.factory.rejected")} ${detail}`;
         return;
       }
-      stateMsg.textContent = "Factory reset confirmed. Device rebooting.";
+      stateMsg.textContent = t("maint.factory.requested");
     } catch (err) {
       stateMsg.textContent = err.message;
     }
   });
 }
-
-// ============ OTA ============
 
 if (otaFile) {
   otaFile.addEventListener("change", () => {
@@ -348,7 +607,7 @@ if (otaFile) {
       const size = (f.size / 1024).toFixed(1);
       otaFilename.textContent = `${f.name}  ·  ${size} KB`;
     } else {
-      otaFilename.textContent = "Drop firmware here or click to browse";
+      otaFilename.textContent = t("ota.no_file");
     }
   });
 }
@@ -357,7 +616,7 @@ if (otaBtn) {
   otaBtn.addEventListener("click", () => {
     otaMsg.textContent = "";
     if (!otaFile.files || otaFile.files.length === 0) {
-      otaMsg.textContent = "Pick a firmware .bin file first.";
+      otaMsg.textContent = t("ota.no_bin");
       return;
     }
     const file = otaFile.files[0];
@@ -375,13 +634,12 @@ if (otaBtn) {
       if (e.lengthComputable) {
         const pct = Math.round((e.loaded / e.total) * 100);
         otaProgress.value = pct;
-        otaMsg.textContent = `Uploading... ${pct}%`;
+        otaMsg.textContent = `${t("ota.uploading")} ${pct}%`;
       }
     };
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) {
-        otaMsg.textContent =
-          "Upload complete. Device rebooting. Reload the page in about 30 seconds.";
+        otaMsg.textContent = t("ota.complete");
       } else {
         let detail = xhr.responseText;
         try {
@@ -390,17 +648,26 @@ if (otaBtn) {
         } catch {
           // ignore
         }
-        otaMsg.textContent = `Upload failed: ${detail}`;
+        otaMsg.textContent = `${t("ota.failed")} ${detail}`;
       }
     };
     xhr.onerror = () => {
-      otaMsg.textContent = "Network error during upload.";
+      otaMsg.textContent = t("ota.network_error");
     };
     xhr.send(form);
   });
 }
 
+// ============ Language switcher ============
+
+document.querySelectorAll("[data-lang-btn]").forEach((btn) => {
+  btn.addEventListener("click", () => setLang(btn.dataset.langBtn));
+});
+
 // ============ Boot ============
+
+applyI18n();
+setLang(currentLang);  // marks the right button active
 
 initSession().then(() => {
   if (!consoleGrid.classList.contains("hidden")) {

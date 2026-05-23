@@ -166,6 +166,44 @@ body {
   gap: 14px;
 }
 
+.langswitch {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  padding: 2px;
+  box-shadow: var(--shadow-sm);
+}
+
+.langswitch button {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--ink-mute);
+  padding: 5px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.langswitch button:hover {
+  color: var(--ink);
+}
+
+.langswitch button.active {
+  background: var(--ink);
+  color: var(--surface);
+}
+
+@media (max-width: 520px) {
+  .langswitch button { padding: 4px 8px; font-size: 11px; }
+}
+
 .net {
   display: inline-flex;
   align-items: center;
