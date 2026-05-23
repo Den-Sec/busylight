@@ -3,6 +3,8 @@
 #include <WebServer.h>
 #include <WebSocketsServer.h>
 
+#include <functional>
+
 #include "auth.h"
 #include "config_store.h"
 #include "led_engine.h"
@@ -39,6 +41,19 @@ class ApiServer {
   // periodic refresh). Cheap when no client is attached.
   void broadcastState();
 
+  // Apply a state change from any source (web API, MQTT command,
+  // presence helper, …). Flips the LED, marks the state dirty for
+  // NVS persistence, broadcasts on WebSocket, and notifies any
+  // listener registered via `setOnStateChanged`.
+  void applyState(BusyStatus state);
+
+  // Register a callback fired right after `applyState` mutates the
+  // device state. Used by the MQTT bridge so external controllers
+  // see live state changes too.
+  void setOnStateChanged(std::function<void(BusyStatus)> cb) {
+    onStateChanged_ = std::move(cb);
+  }
+
  private:
   WebServer server_;
   WebSocketsServer ws_;
@@ -57,6 +72,8 @@ class ApiServer {
   bool otaAuthOk_;
   bool otaError_;
   String otaErrorMsg_;
+
+  std::function<void(BusyStatus)> onStateChanged_;
 
   void registerRoutes_();
   bool requireAuth_(String* sessionTokenOut = nullptr);

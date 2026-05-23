@@ -11,6 +11,14 @@ struct WifiNetwork {
   String password;
 };
 
+struct MqttConfig {
+  bool enabled = false;
+  String host;
+  uint16_t port = 1883;
+  String username;
+  String password;
+};
+
 struct DeviceConfig {
   // Saved Wi-Fi networks in priority order (best to fall back to last).
   std::vector<WifiNetwork> networks;
@@ -21,6 +29,10 @@ struct DeviceConfig {
   // Set by code paths that modify `networks` and need `main.cpp` to
   // rebuild the WiFiMulti list and re-arm reconnects on the next tick.
   bool wifiListDirty;
+  MqttConfig mqtt;
+  // Set by api_server when the MQTT settings change so main.cpp can
+  // re-initialise the MQTT client.
+  bool mqttConfigDirty;
 };
 
 class ConfigStore {
@@ -39,6 +51,8 @@ class ConfigStore {
   std::vector<WifiNetwork> loadNetworks();
   bool savePinHash(const String& pinHash);
   bool saveState(BusyStatus state);
+  MqttConfig loadMqtt();
+  bool saveMqtt(const MqttConfig& cfg);
   // Wipe every key in our NVS namespace. The device must reboot afterwards.
   bool clear();
 

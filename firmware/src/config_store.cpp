@@ -85,7 +85,33 @@ DeviceConfig ConfigStore::load() {
 
   cfg.networks = loadNetworks();
   cfg.configured = !cfg.networks.empty();
+  cfg.mqtt = loadMqtt();
   return cfg;
+}
+
+MqttConfig ConfigStore::loadMqtt() {
+  MqttConfig out;
+  Preferences prefs;
+  if (!prefs.begin(kNs, true)) return out;
+  out.enabled = prefs.getBool("mqtt_on", false);
+  out.host = prefs.getString("mqtt_host", "");
+  out.port = static_cast<uint16_t>(prefs.getUInt("mqtt_port", 1883));
+  out.username = prefs.getString("mqtt_user", "");
+  out.password = prefs.getString("mqtt_pass", "");
+  prefs.end();
+  return out;
+}
+
+bool ConfigStore::saveMqtt(const MqttConfig& cfg) {
+  Preferences prefs;
+  if (!prefs.begin(kNs, false)) return false;
+  prefs.putBool("mqtt_on", cfg.enabled);
+  prefs.putString("mqtt_host", cfg.host);
+  prefs.putUInt("mqtt_port", cfg.port);
+  prefs.putString("mqtt_user", cfg.username);
+  prefs.putString("mqtt_pass", cfg.password);
+  prefs.end();
+  return true;
 }
 
 bool ConfigStore::saveNetworks(const std::vector<WifiNetwork>& networks) {

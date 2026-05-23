@@ -11,6 +11,7 @@
 #include "config_store.h"
 #include "hostname.h"
 #include "led_engine.h"
+#include "mqtt_bridge.h"
 
 namespace {
 
@@ -31,6 +32,7 @@ AuthManager gAuth;
 ApiServer gApi(&gLed, &gStore, &gAuth, &gConfig);
 ApPortal gApPortal;
 WiFiMulti gWifiMulti;
+MqttBridge gMqtt;
 
 bool gServerStarted = false;
 bool gLittleFsOk = false;
@@ -93,6 +95,13 @@ void startServerIfNeeded() {
   }
 
   gApi.begin(gLittleFsOk);
+  // Wire MQTT pub on every state change emitted by the API server,
+  // and accept inbound MQTT commands as state-change events through
+  // the same code path.
+  gApi.setOnStateChanged([](BusyStatus s) { gMqtt.publishState(s); });
+  gMqtt.begin(gDeviceHostname, &gLed, [](BusyStatus s) { gApi.applyState(s); });
+  gMqtt.configure(gConfig.mqtt);
+
   gLed.setState(gConfig.lastState);
   gServerStarted = true;
   Serial.printf("{\"ok\":true,\"event\":\"server_started\",\"ip\":\"%s\",\"host\":\"%s\"}\n",
@@ -376,6 +385,11 @@ void loop() {
 
   if (gServerStarted) {
     gApi.handleClient();
+    if (gConfig.mqttConfigDirty) {
+      gConfig.mqttConfigDirty = false;
+      gMqtt.configure(gConfig.mqtt);
+    }
+    gMqtt.loop();
     persistStateIfDebounced();
     handlePendingDeviceActions();
   }

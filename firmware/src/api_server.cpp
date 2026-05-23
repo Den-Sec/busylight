@@ -130,6 +130,19 @@ void ApiServer::broadcastState() {
   ws_.broadcastTXT(buf);
 }
 
+void ApiServer::applyState(BusyStatus state) {
+  led_->setState(state);
+  if (config_->lastState != state) {
+    config_->lastState = state;
+    stateDirty_ = true;
+    stateDirtyAtMs_ = millis();
+  }
+  broadcastState();
+  if (onStateChanged_) {
+    onStateChanged_(state);
+  }
+}
+
 void ApiServer::clearStateDirty() {
   stateDirty_ = false;
   stateDirtyAtMs_ = 0;
@@ -301,13 +314,7 @@ void ApiServer::registerRoutes_() {
       return;
     }
 
-    led_->setState(st);
-    if (config_->lastState != st) {
-      config_->lastState = st;
-      stateDirty_ = true;
-      stateDirtyAtMs_ = millis();
-    }
-    broadcastState();
+    applyState(st);
     sendJson_(200, "{\"ok\":true}");
   });
 
@@ -478,6 +485,71 @@ void ApiServer::registerRoutes_() {
     config_->networks = configStore_->loadNetworks();
     config_->configured = !config_->networks.empty();
     config_->wifiListDirty = true;
+    sendJson_(200, "{\"ok\":true}");
+  });
+
+  // ----- mqtt -----
+  server_.on("/api/mqtt", HTTP_GET, [&]() {
+    if (!requireAuth_()) return;
+    JsonDocument out;
+    out["enabled"] = config_->mqtt.enabled;
+    out["host"] = config_->mqtt.host;
+    out["port"] = config_->mqtt.port;
+    out["username"] = config_->mqtt.username;
+    // Do not return the password to the client; only report whether
+    // one is configured.
+    out["has_password"] = config_->mqtt.password.length() > 0;
+    String body;
+    serializeJson(out, body);
+    sendJson_(200, body);
+  });
+
+  server_.on("/api/mqtt", HTTP_POST, [&]() {
+    String sessionToken;
+    if (!requireAuth_(&sessionToken)) return;
+    if (!requireCsrf_(sessionToken)) return;
+
+    JsonDocument in;
+    auto err = deserializeJson(in, readBody_());
+    if (err) {
+      sendJsonErr_(400, "invalid_payload");
+      return;
+    }
+
+    MqttConfig next = config_->mqtt;
+    if (in["enabled"].is<bool>()) {
+      next.enabled = in["enabled"].as<bool>();
+    }
+    if (in["host"].is<const char*>()) {
+      next.host = String(static_cast<const char*>(in["host"]));
+      next.host.trim();
+    }
+    if (in["port"].is<unsigned int>() || in["port"].is<int>()) {
+      long p = in["port"].as<long>();
+      if (p < 1 || p > 65535) {
+        sendJsonErr_(422, "port_invalid");
+        return;
+      }
+      next.port = static_cast<uint16_t>(p);
+    }
+    if (in["username"].is<const char*>()) {
+      next.username = String(static_cast<const char*>(in["username"]));
+    }
+    if (in["password"].is<const char*>()) {
+      next.password = String(static_cast<const char*>(in["password"]));
+    }
+    // Empty host with enabled=true would be a misconfiguration; reject.
+    if (next.enabled && next.host.length() == 0) {
+      sendJsonErr_(422, "mqtt_host_required");
+      return;
+    }
+
+    if (!configStore_->saveMqtt(next)) {
+      sendJsonErr_(500, "save_failed");
+      return;
+    }
+    config_->mqtt = next;
+    config_->mqttConfigDirty = true;
     sendJson_(200, "{\"ok\":true}");
   });
 

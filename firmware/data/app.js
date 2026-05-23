@@ -137,6 +137,24 @@ const I18N = {
       'Remove "{ssid}"? The device will fall back to another saved network if available.',
     "wifi.meta_count": "{n} of {max}",
     "wifi.no_ssid": "Type a network name first.",
+
+    "mqtt.title": "MQTT / Home Assistant",
+    "mqtt.lede":
+      "Connect this BusyLight to an MQTT broker. Home Assistant auto-discovers it as a Select entity (busylight/<host>/state and /cmd/set).",
+    "mqtt.disabled": "Disabled",
+    "mqtt.enabled_off": "Disabled",
+    "mqtt.enabled_on": "Enabled",
+    "mqtt.enable": "Enable MQTT bridge",
+    "mqtt.host": "Broker host",
+    "mqtt.port": "Port",
+    "mqtt.username": "Username",
+    "mqtt.password": "Password",
+    "mqtt.password_placeholder": "Leave empty to keep current",
+    "mqtt.save": "Save MQTT settings",
+    "mqtt.saved": "MQTT settings saved.",
+    "errors.mqtt_host_required":
+      "Broker host is required when MQTT is enabled.",
+    "errors.port_invalid": "Port must be between 1 and 65535.",
   },
 
   it: {
@@ -277,6 +295,24 @@ const I18N = {
       'Rimuovo "{ssid}"? Il dispositivo passerà ad un\'altra rete salvata se disponibile.',
     "wifi.meta_count": "{n} di {max}",
     "wifi.no_ssid": "Inserisci prima un nome rete.",
+
+    "mqtt.title": "MQTT / Home Assistant",
+    "mqtt.lede":
+      "Collega questo BusyLight a un broker MQTT. Home Assistant lo rileva automaticamente come entità Select (busylight/<host>/state e /cmd/set).",
+    "mqtt.disabled": "Disattivato",
+    "mqtt.enabled_off": "Disattivato",
+    "mqtt.enabled_on": "Attivo",
+    "mqtt.enable": "Attiva bridge MQTT",
+    "mqtt.host": "Indirizzo broker",
+    "mqtt.port": "Porta",
+    "mqtt.username": "Username",
+    "mqtt.password": "Password",
+    "mqtt.password_placeholder": "Lascia vuoto per non cambiarla",
+    "mqtt.save": "Salva impostazioni MQTT",
+    "mqtt.saved": "Impostazioni MQTT salvate.",
+    "errors.mqtt_host_required":
+      "L'indirizzo del broker è obbligatorio quando MQTT è attivo.",
+    "errors.port_invalid": "La porta deve essere tra 1 e 65535.",
   },
 };
 
@@ -395,6 +431,15 @@ const wifiNewSsid = document.getElementById("wifi-new-ssid");
 const wifiNewPassword = document.getElementById("wifi-new-password");
 const wifiAddBtn = document.getElementById("wifi-add-btn");
 const wifiMsg = document.getElementById("wifi-msg");
+
+const mqttEnabled = document.getElementById("mqtt-enabled");
+const mqttHost = document.getElementById("mqtt-host");
+const mqttPort = document.getElementById("mqtt-port");
+const mqttUser = document.getElementById("mqtt-user");
+const mqttPass = document.getElementById("mqtt-pass");
+const mqttSaveBtn = document.getElementById("mqtt-save");
+const mqttMsg = document.getElementById("mqtt-msg");
+const mqttStatus = document.getElementById("mqtt-status");
 
 // ============ Helpers ============
 function readCookie(name) {
@@ -617,6 +662,56 @@ async function removeWifi(ssid, isCurrent) {
   }
 }
 
+async function refreshMqtt() {
+  if (!mqttHost) return;
+  try {
+    const data = await api("/api/mqtt");
+    if (mqttEnabled) mqttEnabled.checked = !!data.enabled;
+    if (mqttHost) mqttHost.value = data.host || "";
+    if (mqttPort) mqttPort.value = data.port ? String(data.port) : "1883";
+    if (mqttUser) mqttUser.value = data.username || "";
+    // Never echo the stored password back; placeholder hints at it.
+    if (mqttPass) mqttPass.value = "";
+    if (mqttStatus) {
+      mqttStatus.textContent = t(
+        data.enabled ? "mqtt.enabled_on" : "mqtt.enabled_off"
+      );
+    }
+  } catch (err) {
+    if (err.status === 401) showLogin();
+  }
+}
+
+async function saveMqtt() {
+  if (!mqttSaveBtn) return;
+  mqttMsg.textContent = "";
+  const body = {
+    enabled: !!mqttEnabled.checked,
+    host: mqttHost.value.trim(),
+    port: Number(mqttPort.value.trim() || "1883"),
+    username: mqttUser.value,
+  };
+  // Only send the password if the user typed something. Empty input
+  // means "leave whatever is stored alone".
+  if (mqttPass.value) body.password = mqttPass.value;
+
+  try {
+    await api("/api/mqtt", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    mqttPass.value = "";
+    mqttMsg.textContent = t("mqtt.saved");
+    if (mqttStatus) {
+      mqttStatus.textContent = t(
+        body.enabled ? "mqtt.enabled_on" : "mqtt.enabled_off"
+      );
+    }
+  } catch (err) {
+    mqttMsg.textContent = err.message;
+  }
+}
+
 async function refreshSettings() {
   const data = await api("/api/settings");
   tHost.textContent = data.hostname || "--";
@@ -636,6 +731,7 @@ async function initSession() {
     await refreshState();
     await refreshSettings();
     await refreshWifiList();
+    await refreshMqtt();
     showApp();
   } catch (err) {
     if (err.status === 401) {
@@ -911,6 +1007,10 @@ if (wifiNewPassword) {
   wifiNewPassword.addEventListener("keydown", (e) => {
     if (e.key === "Enter") addWifi();
   });
+}
+
+if (mqttSaveBtn) {
+  mqttSaveBtn.addEventListener("click", saveMqtt);
 }
 
 // ============ Language switcher ============

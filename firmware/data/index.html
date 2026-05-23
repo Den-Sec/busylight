@@ -235,6 +235,44 @@
           </div>
         </section>
 
+        <!-- MQTT -->
+        <section class="block">
+          <header class="block-head">
+            <h2 data-i18n="mqtt.title">MQTT / Home Assistant</h2>
+            <span class="block-sub" id="mqtt-status" data-i18n="mqtt.disabled">Disabled</span>
+          </header>
+          <div class="block-body">
+            <p class="lede lede--sm" data-i18n="mqtt.lede">
+              Connect this BusyLight to an MQTT broker. Home Assistant auto-discovers it as a Select entity.
+            </p>
+            <label class="mqtt-toggle">
+              <input id="mqtt-enabled" type="checkbox" />
+              <span data-i18n="mqtt.enable">Enable MQTT bridge</span>
+            </label>
+            <div class="field">
+              <label for="mqtt-host" data-i18n="mqtt.host">Broker host</label>
+              <input id="mqtt-host" type="text" autocomplete="off" placeholder="homeassistant.local" />
+            </div>
+            <div class="field">
+              <label for="mqtt-port" data-i18n="mqtt.port">Port</label>
+              <input id="mqtt-port" type="text" inputmode="numeric" autocomplete="off" placeholder="1883" />
+            </div>
+            <div class="field">
+              <label for="mqtt-user" data-i18n="mqtt.username">Username</label>
+              <input id="mqtt-user" type="text" autocomplete="off" />
+            </div>
+            <div class="field">
+              <label for="mqtt-pass" data-i18n="mqtt.password">Password</label>
+              <input id="mqtt-pass" type="password" autocomplete="new-password" data-i18n-attr="placeholder: mqtt.password_placeholder" placeholder="Leave empty to keep current" />
+            </div>
+            <button id="mqtt-save" type="button" class="cta cta--block">
+              <span data-i18n="mqtt.save">Save MQTT settings</span>
+              <span class="cta-arrow" aria-hidden="true">→</span>
+            </button>
+            <p class="msg" id="mqtt-msg" role="status"></p>
+          </div>
+        </section>
+
         <!-- OTA -->
         <section class="block">
           <header class="block-head">
