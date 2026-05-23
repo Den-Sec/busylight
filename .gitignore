@@ -1,0 +1,28 @@
+# BusyLight local build artifacts
+firmware/.pio/
+firmware/.pio-build.log
+firmware/.vscode/
+.venv-pio/
+
+# Windows setup artifacts
+windows_setup/.venv/
+windows_setup/build/
+windows_setup/dist/
+windows_setup/*.spec
+windows_setup/logs/
+windows_setup/pingdiag-*.log
+windows_setup/*.log
+
+# Python caches
+**/__pycache__/
+**/*.pyc
+*.egg-info/
+
+# IDEs
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+

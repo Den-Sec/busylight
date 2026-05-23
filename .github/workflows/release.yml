@@ -1,0 +1,120 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Manual version tag (e.g. v0.2.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  firmware:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            firmware/.pio
+          key: pio-${{ runner.os }}-${{ hashFiles('firmware/platformio.ini') }}
+      - name: Install PlatformIO Core
+        run: pip install --upgrade platformio
+      - name: Build firmware
+        working-directory: firmware
+        run: pio run -e esp32c6dev
+      - name: Build LittleFS image
+        working-directory: firmware
+        run: pio run -e esp32c6dev -t buildfs
+      - name: Stage release artifacts
+        run: |
+          mkdir -p release-out
+          VERSION="${{ github.event.inputs.version || github.ref_name }}"
+          cp firmware/.pio/build/esp32c6dev/firmware.factory.bin "release-out/busylight-firmware-${VERSION}.bin"
+          cp firmware/.pio/build/esp32c6dev/littlefs.bin "release-out/busylight-littlefs-${VERSION}.bin" || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware-release
+          path: release-out/
+
+  wizard:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        working-directory: windows_setup
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt -r requirements-dev.txt pyinstaller
+      - name: Run tests
+        working-directory: windows_setup
+        env:
+          PYTHONPATH: src
+        run: python -m pytest tests/
+      - name: Build exe
+        working-directory: windows_setup
+        run: python -m PyInstaller --onefile --noconsole --name BusyLightSetup src\busylight_setup\main.py
+      - name: Stage release artifact
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release-out | Out-Null
+          $version = if ($env:GITHUB_REF_NAME) { $env:GITHUB_REF_NAME } else { "${{ github.event.inputs.version }}" }
+          Copy-Item windows_setup\dist\BusyLightSetup.exe "release-out\BusyLightSetup-$version.exe"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wizard-release
+          path: release-out/
+
+  publish:
+    needs: [firmware, wizard]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - name: Collect into single folder
+        run: |
+          mkdir -p final
+          find dist -type f \( -name "*.bin" -o -name "*.exe" \) -exec cp {} final/ \;
+          cd final
+          sha256sum * > SHA256SUMS
+          ls -la
+      - name: Extract release notes from CHANGELOG
+        id: notes
+        run: |
+          VERSION="${{ github.event.inputs.version || github.ref_name }}"
+          VERSION_NUMBER="${VERSION#v}"
+          awk -v ver="$VERSION_NUMBER" '
+            /^## \[/ {
+              if (capture) exit
+              if ($0 ~ "\\[" ver "\\]" || $0 ~ "\\[Unreleased\\]") capture=1
+              next
+            }
+            capture { print }
+          ' CHANGELOG.md > release_notes.md || echo "Release ${VERSION}" > release_notes.md
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.version || github.ref_name }}
+          body_path: release_notes.md
+          files: |
+            final/*.bin
+            final/*.exe
+            final/SHA256SUMS
+          draft: false
+          prerelease: ${{ contains(github.ref_name, 'rc') }}

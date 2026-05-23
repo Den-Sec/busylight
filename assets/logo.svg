@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-label="BusyLight">
+  <title>BusyLight</title>
+  <defs>
+    <radialGradient id="redGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ff5b5b" stop-opacity="1"/>
+      <stop offset="65%" stop-color="#c0392b" stop-opacity="1"/>
+      <stop offset="100%" stop-color="#7c1410" stop-opacity="1"/>
+    </radialGradient>
+    <radialGradient id="greenGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#5ddc8e" stop-opacity="1"/>
+      <stop offset="65%" stop-color="#1f7a47" stop-opacity="1"/>
+      <stop offset="100%" stop-color="#0e3f24" stop-opacity="1"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="256" height="256" fill="#f4f4ef" rx="32" ry="32"/>
+
+  <!-- Red LED -->
+  <circle cx="96" cy="128" r="60" fill="url(#redGlow)" stroke="#3a0e0a" stroke-width="3"/>
+  <!-- Green LED, slightly overlapping -->
+  <circle cx="160" cy="128" r="60" fill="url(#greenGlow)" stroke="#0a2b18" stroke-width="3" fill-opacity="0.92"/>
+
+  <!-- Subtle highlight on each LED -->
+  <ellipse cx="80" cy="108" rx="14" ry="8" fill="#ffffff" fill-opacity="0.55"/>
+  <ellipse cx="144" cy="108" rx="14" ry="8" fill="#ffffff" fill-opacity="0.55"/>
+</svg>
