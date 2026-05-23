@@ -877,6 +877,87 @@ input[type="file"]:focus {
   background: var(--available);
 }
 
+/* ===== WI-FI LIST ===== */
+
+.wifi-list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wifi-list:empty {
+  display: none;
+}
+
+.wifi-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+
+.wifi-row.current {
+  border-color: var(--available);
+  background:
+    linear-gradient(180deg, var(--available-soft), transparent 70%),
+    var(--surface);
+}
+
+.wifi-row-name {
+  font-weight: 500;
+  letter-spacing: 0.005em;
+  font-family: var(--grid);
+  font-size: 15px;
+  color: var(--ink);
+}
+
+.wifi-row-tag {
+  margin-left: 8px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--available-d, var(--available));
+  background: rgba(52, 199, 89, 0.16);
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.wifi-row-remove {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: 999px;
+  width: 32px;
+  height: 32px;
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+  color: var(--ink-mute);
+  font-size: 18px;
+  line-height: 1;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.wifi-row-remove:hover {
+  background: var(--busy-soft);
+  color: var(--busy);
+  border-color: var(--busy);
+}
+
+.wifi-add {
+  border-top: 1px dashed var(--line-strong);
+  padding-top: 8px;
+  margin-top: 8px;
+}
+
 /* ===== FILEPICK ===== */
 
 .filepick {

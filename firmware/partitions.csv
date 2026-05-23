@@ -1,0 +1,15 @@
+# Custom partition layout for BusyLight v0.3+
+#
+# The stock `default.csv` shipped with the pioarduino platform gives each
+# OTA slot 1.25 MB, which the firmware outgrew the moment we added
+# WebSockets + WiFiMulti. This layout enlarges both OTA slots to
+# 1.5625 MB (0x190000) each and shrinks LittleFS to 832 KB — still plenty
+# for the web UI assets (< 6 KB total today). Adjusts neatly to the
+# 4 MB flash on the ESP32-C6-DevKitC-1.
+#
+# Name,   Type, SubType,  Offset,   Size,     Flags
+nvs,      data, nvs,      0x9000,   0x5000,
+otadata,  data, ota,      0xe000,   0x2000,
+app0,     app,  ota_0,    0x10000,  0x190000,
+app1,     app,  ota_1,    0x1a0000, 0x190000,
+spiffs,   data, spiffs,   0x330000, 0xd0000,

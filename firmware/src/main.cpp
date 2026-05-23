@@ -3,6 +3,7 @@
 #include <ESPmDNS.h>
 #include <LittleFS.h>
 #include <WiFi.h>
+#include <WiFiMulti.h>
 
 #include "ap_portal.h"
 #include "api_server.h"
@@ -29,6 +30,7 @@ DeviceConfig gConfig;
 AuthManager gAuth;
 ApiServer gApi(&gLed, &gStore, &gAuth, &gConfig);
 ApPortal gApPortal;
+WiFiMulti gWifiMulti;
 
 bool gServerStarted = false;
 bool gLittleFsOk = false;
@@ -64,6 +66,20 @@ void computeHostname() {
   gDeviceHostname = busylight::makeHostname(mac);
 }
 
+// Refresh the WiFiMulti AP list from gConfig.networks. Called once at
+// boot and again whenever the web API (or AP captive portal) edits the
+// stored list and flags `gConfig.wifiListDirty`.
+void rebuildWifiMulti() {
+  gWifiMulti.APlistClean();
+  for (const auto& net : gConfig.networks) {
+    if (net.password.length() == 0) {
+      gWifiMulti.addAP(net.ssid.c_str());
+    } else {
+      gWifiMulti.addAP(net.ssid.c_str(), net.password.c_str());
+    }
+  }
+}
+
 void startServerIfNeeded() {
   if (gServerStarted) return;
 
@@ -93,26 +109,13 @@ void enterApPortal() {
                 apSsid.c_str());
 }
 
-void leaveApPortal() {
-  gApPortal.stop();
-  gWifi.attemptIndex = 0;
-  gWifi.failuresTotal = 0;
-  gWifi.nextRetryMs = 0;
-  gWifi.kicked = false;
-  gServerStarted = false;
-  gWifiWasConnected = false;
-  WiFi.mode(WIFI_STA);
-  WiFi.setHostname(gDeviceHostname.c_str());
-  if (gConfig.configured) {
-    WiFi.begin(gConfig.ssid.c_str(), gConfig.password.c_str());
-  }
-}
-
 void startStationConnection() {
   WiFi.mode(WIFI_STA);
   WiFi.setHostname(gDeviceHostname.c_str());
-  WiFi.disconnect(true, false);
-  WiFi.begin(gConfig.ssid.c_str(), gConfig.password.c_str());
+  // Kick a fresh association: WiFiMulti picks the strongest AP it
+  // remembers and connects. Returns within `timeout_ms` regardless of
+  // result, so we keep it short to avoid blocking the LED tick.
+  gWifiMulti.run(2000);
   gWifi.kicked = true;
 }
 
@@ -124,7 +127,9 @@ void networkingTick() {
       String ssid = gApPortal.pendingSsid();
       String password = gApPortal.pendingPassword();
       String pin = gApPortal.pendingPin();
-      gStore.saveNetwork(ssid, password);
+      // Append rather than replace: the user might be adding an extra
+      // venue (e.g. a hotel Wi-Fi) without wanting to forget home.
+      gStore.addNetwork(ssid, password);
       String newPinHash = AuthManager::hashPin(pin);
       gStore.savePinHash(newPinHash);
       delay(150);
@@ -139,7 +144,7 @@ void networkingTick() {
     return;
   }
 
-  if (!gConfig.configured || gConfig.ssid.length() == 0) {
+  if (!gConfig.configured || gConfig.networks.empty()) {
     gLed.setState(STATUS_WIFI_ERROR);
     return;
   }
@@ -233,10 +238,11 @@ void handleSerialSetConfig(JsonDocument& in) {
     }
   }
 
-  gStore.saveNetwork(ssid, password);
-  gConfig.ssid = ssid;
-  gConfig.password = password;
-  gConfig.configured = true;
+  // Append-or-update: keep any existing networks the user added from
+  // the web UI, just ensure this one is in there too.
+  gStore.addNetwork(ssid, password);
+  gConfig.networks = gStore.loadNetworks();
+  gConfig.configured = !gConfig.networks.empty();
 
   String pinHash = AuthManager::hashPin(pin);
   gStore.savePinHash(pinHash);
@@ -340,6 +346,8 @@ void setup() {
 
   applyDefaultPinIfMissing();
 
+  rebuildWifiMulti();
+
   if (gConfig.configured) {
     WiFi.mode(WIFI_STA);
     WiFi.setHostname(gDeviceHostname.c_str());
@@ -352,6 +360,18 @@ void setup() {
 
 void loop() {
   handleSerialProvisioning();
+
+  // API handlers may have edited the saved Wi-Fi list; rebuild the
+  // WiFiMulti AP table once per change rather than on every connect
+  // attempt.
+  if (gConfig.wifiListDirty) {
+    gConfig.wifiListDirty = false;
+    rebuildWifiMulti();
+    // Force a fresh attempt so a new credential takes effect now.
+    gWifi.kicked = false;
+    gWifi.nextRetryMs = 0;
+  }
+
   networkingTick();
 
   if (gServerStarted) {

@@ -371,6 +371,116 @@ void ApiServer::registerRoutes_() {
     sendJson_(200, "{\"ok\":true}");
   });
 
+  // ----- wi-fi -----
+  server_.on("/api/wifi", HTTP_GET, [&]() {
+    if (!requireAuth_()) return;
+
+    String currentSsid = WiFi.SSID();
+    String body = "{\"networks\":[";
+    bool first = true;
+    for (const auto& net : config_->networks) {
+      if (!first) body += ",";
+      first = false;
+      body += "{\"ssid\":\"";
+      body += net.ssid;
+      body += "\",\"current\":";
+      body += (net.ssid == currentSsid) ? "true" : "false";
+      body += "}";
+    }
+    body += "],\"max\":";
+    body += String(static_cast<unsigned>(ConfigStore::kMaxWifiNetworks));
+    body += "}";
+    sendJson_(200, body);
+  });
+
+  server_.on("/api/wifi", HTTP_POST, [&]() {
+    String sessionToken;
+    if (!requireAuth_(&sessionToken)) return;
+    if (!requireCsrf_(sessionToken)) return;
+
+    JsonDocument in;
+    auto err = deserializeJson(in, readBody_());
+    if (err || !in["ssid"].is<const char*>()) {
+      sendJsonErr_(400, "invalid_payload");
+      return;
+    }
+
+    String ssid = String(static_cast<const char*>(in["ssid"]));
+    ssid.trim();
+    String password =
+        in["password"].is<const char*>()
+            ? String(static_cast<const char*>(in["password"]))
+            : "";
+
+    if (ssid.length() == 0 || ssid.length() > 32) {
+      sendJsonErr_(422, "ssid_length");
+      return;
+    }
+    if (password.length() > 63) {
+      sendJsonErr_(422, "password_length");
+      return;
+    }
+
+    if (config_->networks.size() >= ConfigStore::kMaxWifiNetworks) {
+      // Check whether this is an update of an existing entry or a
+      // genuine new addition. addNetwork updates in place so the size
+      // check is only meaningful when ssid is brand new.
+      bool exists = false;
+      for (const auto& n : config_->networks) {
+        if (n.ssid == ssid) {
+          exists = true;
+          break;
+        }
+      }
+      if (!exists) {
+        sendJsonErr_(409, "wifi_list_full");
+        return;
+      }
+    }
+
+    if (!configStore_->addNetwork(ssid, password)) {
+      sendJsonErr_(500, "save_failed");
+      return;
+    }
+    config_->networks = configStore_->loadNetworks();
+    config_->configured = !config_->networks.empty();
+    config_->wifiListDirty = true;
+    sendJson_(200, "{\"ok\":true}");
+  });
+
+  server_.on("/api/wifi", HTTP_DELETE, [&]() {
+    String sessionToken;
+    if (!requireAuth_(&sessionToken)) return;
+    if (!requireCsrf_(sessionToken)) return;
+
+    JsonDocument in;
+    auto err = deserializeJson(in, readBody_());
+    if (err || !in["ssid"].is<const char*>()) {
+      sendJsonErr_(400, "invalid_payload");
+      return;
+    }
+    String ssid = String(static_cast<const char*>(in["ssid"]));
+
+    // Refuse to delete the network we are actively connected to unless
+    // the client passes force:true. Removing the current Wi-Fi here
+    // would maroon the device on the next reboot if no other saved
+    // network is in range.
+    bool force = in["force"].is<bool>() && in["force"].as<bool>();
+    if (!force && WiFi.SSID() == ssid) {
+      sendJsonErr_(409, "wifi_in_use");
+      return;
+    }
+
+    if (!configStore_->removeNetwork(ssid)) {
+      sendJsonErr_(404, "wifi_not_found");
+      return;
+    }
+    config_->networks = configStore_->loadNetworks();
+    config_->configured = !config_->networks.empty();
+    config_->wifiListDirty = true;
+    sendJson_(200, "{\"ok\":true}");
+  });
+
   // ----- device -----
   server_.on("/api/device/reboot", HTTP_POST, [&]() {
     String sessionToken;

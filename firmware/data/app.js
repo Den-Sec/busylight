@@ -114,6 +114,29 @@ const I18N = {
     "errors.update_begin_failed": "Could not allocate OTA slot.",
     "errors.update_end_failed": "Final write failed; reboot to recover.",
     "errors.write_failed": "Write failed mid-upload.",
+    "errors.ssid_length": "SSID must be 1–32 characters.",
+    "errors.password_length": "Password must be at most 63 characters.",
+    "errors.wifi_list_full": "You already have the maximum number of saved networks.",
+    "errors.wifi_in_use":
+      "Can't remove the network you're connected to. Switch to another saved one first.",
+    "errors.wifi_not_found": "That network is not in the list.",
+    "errors.save_failed": "Could not save to flash.",
+
+    "wifi.title": "Wi-Fi networks",
+    "wifi.empty":
+      "No saved networks yet. Add one to keep this BusyLight online when you move it around.",
+    "wifi.ssid": "Network name (SSID)",
+    "wifi.password": "Password",
+    "wifi.password_placeholder": "Leave empty for open networks",
+    "wifi.add": "Save network",
+    "wifi.adding": "Saving…",
+    "wifi.added": "Network saved.",
+    "wifi.current": "Connected",
+    "wifi.remove": "Remove",
+    "wifi.confirm_remove":
+      'Remove "{ssid}"? The device will fall back to another saved network if available.',
+    "wifi.meta_count": "{n} of {max}",
+    "wifi.no_ssid": "Type a network name first.",
   },
 
   it: {
@@ -230,6 +253,30 @@ const I18N = {
     "errors.update_end_failed":
       "Scrittura finale fallita; riavvia per recuperare.",
     "errors.write_failed": "Scrittura fallita a metà upload.",
+    "errors.ssid_length": "Il nome rete deve avere da 1 a 32 caratteri.",
+    "errors.password_length": "La password può avere al massimo 63 caratteri.",
+    "errors.wifi_list_full":
+      "Hai già raggiunto il numero massimo di reti salvate.",
+    "errors.wifi_in_use":
+      "Non puoi rimuovere la rete attualmente in uso. Passa prima a un'altra rete salvata.",
+    "errors.wifi_not_found": "Questa rete non è nella lista.",
+    "errors.save_failed": "Impossibile salvare nella flash.",
+
+    "wifi.title": "Reti Wi-Fi",
+    "wifi.empty":
+      "Nessuna rete salvata. Aggiungine una per tenere il BusyLight online quando lo sposti.",
+    "wifi.ssid": "Nome rete (SSID)",
+    "wifi.password": "Password",
+    "wifi.password_placeholder": "Lascia vuoto per reti aperte",
+    "wifi.add": "Salva rete",
+    "wifi.adding": "Salvo…",
+    "wifi.added": "Rete salvata.",
+    "wifi.current": "Connesso",
+    "wifi.remove": "Rimuovi",
+    "wifi.confirm_remove":
+      'Rimuovo "{ssid}"? Il dispositivo passerà ad un\'altra rete salvata se disponibile.',
+    "wifi.meta_count": "{n} di {max}",
+    "wifi.no_ssid": "Inserisci prima un nome rete.",
   },
 };
 
@@ -292,6 +339,13 @@ function refreshDynamicLabels() {
   if (otaFilename && !otaFile.files?.length) {
     otaFilename.textContent = t("ota.no_file");
   }
+  if (
+    wifiList &&
+    !consoleGrid.classList.contains("hidden")
+  ) {
+    // re-fetch so the "Connected" tag is rendered in the new language
+    refreshWifiList();
+  }
 }
 
 // ============ DOM refs ============
@@ -333,6 +387,14 @@ const otaMsg = document.getElementById("ota-msg");
 
 const rebootBtn = document.getElementById("reboot-btn");
 const factoryResetBtn = document.getElementById("factory-reset-btn");
+
+const wifiList = document.getElementById("wifi-list");
+const wifiEmpty = document.getElementById("wifi-empty");
+const wifiMeta = document.getElementById("wifi-meta");
+const wifiNewSsid = document.getElementById("wifi-new-ssid");
+const wifiNewPassword = document.getElementById("wifi-new-password");
+const wifiAddBtn = document.getElementById("wifi-add-btn");
+const wifiMsg = document.getElementById("wifi-msg");
 
 // ============ Helpers ============
 function readCookie(name) {
@@ -443,6 +505,118 @@ async function refreshState() {
   }
 }
 
+async function refreshWifiList() {
+  if (!wifiList) return;
+  try {
+    const data = await api("/api/wifi");
+    renderWifiList(data);
+  } catch (err) {
+    if (err.status === 401) showLogin();
+    if (wifiMsg) wifiMsg.textContent = err.message;
+  }
+}
+
+function renderWifiList(data) {
+  if (!wifiList) return;
+  const networks = Array.isArray(data.networks) ? data.networks : [];
+  const max = typeof data.max === "number" ? data.max : 6;
+
+  wifiList.innerHTML = "";
+  for (const net of networks) {
+    const li = document.createElement("li");
+    li.className = "wifi-row" + (net.current ? " current" : "");
+
+    const left = document.createElement("div");
+    left.style.display = "flex";
+    left.style.alignItems = "center";
+    left.style.gap = "8px";
+
+    const name = document.createElement("span");
+    name.className = "wifi-row-name";
+    name.textContent = net.ssid;
+    left.appendChild(name);
+
+    if (net.current) {
+      const tag = document.createElement("span");
+      tag.className = "wifi-row-tag";
+      tag.textContent = t("wifi.current");
+      left.appendChild(tag);
+    }
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "wifi-row-remove";
+    btn.setAttribute("aria-label", t("wifi.remove"));
+    btn.textContent = "×";
+    btn.addEventListener("click", () => removeWifi(net.ssid, !!net.current));
+
+    li.appendChild(left);
+    li.appendChild(btn);
+    wifiList.appendChild(li);
+  }
+
+  if (wifiEmpty) wifiEmpty.hidden = networks.length > 0;
+  if (wifiMeta) {
+    wifiMeta.textContent = t("wifi.meta_count")
+      .replace("{n}", String(networks.length))
+      .replace("{max}", String(max));
+  }
+}
+
+async function addWifi() {
+  if (!wifiNewSsid) return;
+  const ssid = wifiNewSsid.value.trim();
+  const password = wifiNewPassword.value;
+  if (!ssid) {
+    wifiMsg.textContent = t("wifi.no_ssid");
+    return;
+  }
+  wifiMsg.textContent = t("wifi.adding");
+  try {
+    await api("/api/wifi", {
+      method: "POST",
+      body: JSON.stringify({ ssid, password }),
+    });
+    wifiNewSsid.value = "";
+    wifiNewPassword.value = "";
+    wifiMsg.textContent = t("wifi.added");
+    await refreshWifiList();
+  } catch (err) {
+    wifiMsg.textContent = err.message;
+  }
+}
+
+async function removeWifi(ssid, isCurrent) {
+  const prompt = t("wifi.confirm_remove").replace("{ssid}", ssid);
+  if (!confirm(prompt)) return;
+  try {
+    const body = { ssid };
+    if (isCurrent) body.force = true;
+    const r = await fetch("/api/wifi", {
+      method: "DELETE",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRF-Token": csrfToken(),
+      },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) {
+      const text = await r.text();
+      let msg = text;
+      try {
+        const j = JSON.parse(text);
+        msg = humanError(j.error) || j.error || text;
+      } catch {}
+      wifiMsg.textContent = msg;
+      return;
+    }
+    await refreshWifiList();
+  } catch (err) {
+    wifiMsg.textContent = err.message;
+  }
+}
+
 async function refreshSettings() {
   const data = await api("/api/settings");
   tHost.textContent = data.hostname || "--";
@@ -461,6 +635,7 @@ async function initSession() {
   try {
     await refreshState();
     await refreshSettings();
+    await refreshWifiList();
     showApp();
   } catch (err) {
     if (err.status === 401) {
@@ -726,6 +901,15 @@ if (otaBtn) {
       otaMsg.textContent = t("ota.network_error");
     };
     xhr.send(form);
+  });
+}
+
+if (wifiAddBtn) {
+  wifiAddBtn.addEventListener("click", addWifi);
+}
+if (wifiNewPassword) {
+  wifiNewPassword.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") addWifi();
   });
 }
 

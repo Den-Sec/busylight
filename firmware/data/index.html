@@ -193,6 +193,48 @@
           </section>
         </div>
 
+        <!-- WI-FI NETWORKS -->
+        <section class="block" id="wifi-card">
+          <header class="block-head">
+            <h2 data-i18n="wifi.title">Wi-Fi networks</h2>
+            <span class="block-sub" id="wifi-meta"></span>
+          </header>
+          <div class="block-body">
+            <ul class="wifi-list" id="wifi-list" aria-live="polite"></ul>
+            <p class="lede lede--sm" id="wifi-empty" data-i18n="wifi.empty" hidden>
+              No saved Wi-Fi networks yet. Add one to keep this BusyLight online when you move it around.
+            </p>
+
+            <div class="wifi-add">
+              <div class="field">
+                <label for="wifi-new-ssid" data-i18n="wifi.ssid">Network name (SSID)</label>
+                <input
+                  id="wifi-new-ssid"
+                  type="text"
+                  maxlength="32"
+                  autocomplete="off"
+                />
+              </div>
+              <div class="field">
+                <label for="wifi-new-password" data-i18n="wifi.password">Password</label>
+                <input
+                  id="wifi-new-password"
+                  type="password"
+                  maxlength="63"
+                  autocomplete="new-password"
+                  data-i18n-attr="placeholder: wifi.password_placeholder"
+                  placeholder="Leave empty for open networks"
+                />
+              </div>
+              <button id="wifi-add-btn" type="button" class="cta cta--block">
+                <span data-i18n="wifi.add">Save network</span>
+                <span class="cta-arrow" aria-hidden="true">→</span>
+              </button>
+              <p class="msg" id="wifi-msg" role="status"></p>
+            </div>
+          </div>
+        </section>
+
         <!-- OTA -->
         <section class="block">
           <header class="block-head">
