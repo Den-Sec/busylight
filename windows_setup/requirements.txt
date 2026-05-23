@@ -1,2 +1,5 @@
 pyserial>=3.5
 zeroconf>=0.131
+customtkinter>=5.2
+Pillow>=10.0
+
