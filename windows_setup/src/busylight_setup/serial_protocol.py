@@ -16,6 +16,113 @@ class SetupResult:
     ip_url: str | None
 
 
+def _is_ipv4(value: str) -> bool:
+    parts = value.split(".")
+    if len(parts) != 4:
+        return False
+    try:
+        return all(0 <= int(p) <= 255 for p in parts)
+    except ValueError:
+        return False
+
+
+def _resolve_via_os(hostname: str) -> str | None:
+    """Try the operating-system resolver (Bonjour on Windows/macOS, Avahi
+    on Linux). Cheap and synchronous; returns immediately if no Bonjour
+    service is present."""
+    import socket
+
+    fqdn = f"{hostname.rstrip('.')}.local"
+    try:
+        ip = socket.gethostbyname(fqdn)
+    except (socket.gaierror, OSError):
+        _debug_log(f"resolve_device_ip:os_resolve_failed host={fqdn}")
+        return None
+    if ip and _is_ipv4(ip) and not ip.startswith("127."):
+        _debug_log(f"resolve_device_ip:os_hit ip={ip}")
+        return ip
+    return None
+
+
+def _resolve_via_zeroconf(hostname: str, timeout_s: float) -> str | None:
+    """Active mDNS browse via the ``zeroconf`` library; works on hosts
+    without Bonjour installed."""
+    try:
+        from zeroconf import ServiceBrowser, ServiceListener, Zeroconf
+    except ImportError:
+        _debug_log("resolve_device_ip:zeroconf_missing")
+        return None
+
+    target = hostname.lower().rstrip(".")
+
+    class _Listener(ServiceListener):
+        def __init__(self) -> None:
+            self.found_ip: str | None = None
+
+        def _check(self, zc, type_, name):  # noqa: ANN001
+            try:
+                info = zc.get_service_info(type_, name, timeout=2000)
+            except Exception:  # noqa: BLE001
+                return
+            if not info:
+                return
+            server = (info.server or "").lower().rstrip(".")
+            if not (server.startswith(target) or target in name.lower()):
+                return
+            for addr in info.parsed_addresses():
+                if _is_ipv4(addr) and not addr.startswith("127."):
+                    self.found_ip = addr
+                    return
+
+        def add_service(self, zc, type_, name):  # noqa: ANN001
+            self._check(zc, type_, name)
+
+        def update_service(self, zc, type_, name):  # noqa: ANN001
+            self._check(zc, type_, name)
+
+        def remove_service(self, *_a, **_kw):  # noqa: ANN001, ANN002
+            pass
+
+    zc = Zeroconf()
+    listener = _Listener()
+    _debug_log(f"resolve_device_ip:zc_start target={target}")
+    try:
+        ServiceBrowser(zc, "_http._tcp.local.", listener)
+        deadline = time.time() + timeout_s
+        while time.time() < deadline:
+            if listener.found_ip:
+                _debug_log(
+                    f"resolve_device_ip:zc_hit ip={listener.found_ip}"
+                )
+                return listener.found_ip
+            time.sleep(0.25)
+    finally:
+        try:
+            zc.close()
+        except Exception:  # noqa: BLE001
+            pass
+    _debug_log("resolve_device_ip:zc_timeout")
+    return None
+
+
+def resolve_device_ip(hostname: str, timeout_s: float = 15.0) -> str | None:
+    """Resolve a BusyLight hostname (e.g. ``busylight-f5f0``) to an IPv4
+    address.
+
+    Strategy:
+    1. Ask the OS resolver first (Bonjour on Windows when iTunes / Bonjour
+       Print Services are installed; built-in mDNS on macOS / Linux).
+       Most users land here in well under a second.
+    2. If that returns nothing (Windows without Bonjour, hostile DNS),
+       fall back to an active ``zeroconf`` browse on the LAN.
+    Returns ``None`` if both strategies time out.
+    """
+    ip = _resolve_via_os(hostname)
+    if ip:
+        return ip
+    return _resolve_via_zeroconf(hostname, timeout_s)
+
+
 def _debug_log(message: str) -> None:
     log_path = os.getenv("BUSYLIGHT_DEBUG_LOG", "").strip()
     if not log_path:

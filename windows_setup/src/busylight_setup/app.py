@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import multiprocessing as mp
 import queue
+import threading
 import tkinter as tk
 import time
 from tkinter import messagebox, ttk
 
+from . import serial_protocol as sp
 from .serial_protocol import (
     SetupResult,
     available_busylight_ports,
@@ -222,8 +224,46 @@ class SetupWizard(tk.Tk):
         self._schedule_poll(token)
 
     def _on_configure_success(self, result: SetupResult) -> None:
-        self._set_busy(False)
-        self._show_success(result)
+        # We always have an mdns_url (e.g. http://busylight-f5f0.local). The
+        # ip_url is often missing because the device re-enumerates its USB
+        # CDC port during the post-config reboot, so the wizard loses the
+        # serial sync before `server_started` arrives.
+        # Try a 15 s mDNS browse on the LAN to recover it; the user gets
+        # both URLs in the success dialog if it works.
+        if result.ip_url or not result.mdns_url:
+            self._set_busy(False)
+            self._show_success(result)
+            return
+
+        self.status_var.set(
+            "Looking up the device on your network…"
+        )
+        host = (
+            result.mdns_url.replace("http://", "")
+            .replace("https://", "")
+            .rstrip("/")
+            .split(".")[0]
+        )
+
+        def _worker(host: str, base_result: SetupResult) -> None:
+            ip = sp.resolve_device_ip(host, timeout_s=15.0)
+            if ip:
+                updated = SetupResult(
+                    mdns_url=base_result.mdns_url,
+                    ip_url=f"http://{ip}",
+                )
+            else:
+                updated = base_result
+
+            def _finish() -> None:
+                self._set_busy(False)
+                self._show_success(updated)
+
+            self.after(0, _finish)
+
+        threading.Thread(
+            target=_worker, args=(host, result), daemon=True
+        ).start()
 
     def _on_configure_error(self, error_text: str) -> None:
         self._set_busy(False)
