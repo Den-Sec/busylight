@@ -83,14 +83,116 @@ def _windows_microphone_in_use() -> MicUsage:
 
 
 def _macos_microphone_in_use() -> MicUsage:
-    # TODO: parse `lsof | grep CoreAudio` or query the TCC.db, but for
-    # now keep the helper from flapping by reporting "not in use".
-    return MicUsage(in_use=False, apps=())
+    """macOS: ask ``lsof`` who has Core Audio open right now.
+
+    Apps that capture from the microphone open a file descriptor on
+    ``CoreAudio`` (or the device under ``/dev/`` named ``audio*``);
+    ``lsof`` lists them. We get the process name out of column 1 of
+    the output. Cheap (~10ms) and needs no special permissions for
+    the current user's own processes.
+    """
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            ["lsof", "-nP", "+c", "0"],
+            capture_output=True,
+            text=True,
+            timeout=2.0,
+            check=False,
+        )
+    except (FileNotFoundError, subprocess.SubprocessError):
+        return MicUsage(in_use=False, apps=())
+
+    apps: set[str] = set()
+    needles = ("CoreAudio", "AppleCameraAssistant", "/dev/audio")
+    for line in result.stdout.splitlines():
+        if any(n in line for n in needles):
+            parts = line.split()
+            if parts:
+                apps.add(parts[0])
+
+    # Filter out the system-level always-on processes so we don't report
+    # "you're in a call" 24/7. coreaudiod always holds Core Audio open.
+    SYSTEM_NOISE = {"coreaudiod", "WindowServer", "loginwindow"}
+    apps -= SYSTEM_NOISE
+
+    return MicUsage(in_use=bool(apps), apps=tuple(sorted(apps)))
 
 
 def _linux_microphone_in_use() -> MicUsage:
-    # TODO: parse `pactl list source-outputs` (PulseAudio) or
-    # `pw-dump` (PipeWire).
+    """Linux: query the audio server for active capture streams.
+
+    First tries PulseAudio's ``pactl list source-outputs short`` (works
+    on PipeWire too via the pipewire-pulse compatibility shim, which
+    almost every distro ships). Falls back to ``pw-dump`` for
+    PipeWire-native setups without the shim. Returns a hit if any
+    capture stream is in the RUNNING state.
+    """
+    import subprocess
+
+    # --- PulseAudio / PipeWire-Pulse ---
+    try:
+        result = subprocess.run(
+            ["pactl", "list", "source-outputs"],
+            capture_output=True,
+            text=True,
+            timeout=2.0,
+            check=False,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            apps: list[str] = []
+            current_running = False
+            current_name = ""
+            for raw in result.stdout.splitlines():
+                line = raw.strip()
+                if line.startswith("Source Output #"):
+                    if current_running and current_name:
+                        apps.append(current_name)
+                    current_running = False
+                    current_name = ""
+                elif line.startswith("State: RUNNING"):
+                    current_running = True
+                elif line.startswith("application.name "):
+                    # `application.name = "Firefox"` (quoted)
+                    val = line.split("=", 1)[1].strip()
+                    current_name = val.strip('"')
+            if current_running and current_name:
+                apps.append(current_name)
+            return MicUsage(in_use=bool(apps), apps=tuple(sorted(set(apps))))
+    except (FileNotFoundError, subprocess.SubprocessError):
+        pass
+
+    # --- PipeWire native (no pulse shim) ---
+    try:
+        result = subprocess.run(
+            ["pw-dump"],
+            capture_output=True,
+            text=True,
+            timeout=2.0,
+            check=False,
+        )
+        if result.returncode == 0 and result.stdout:
+            import json
+
+            data = json.loads(result.stdout)
+            apps: list[str] = []
+            for obj in data:
+                info = obj.get("info", {}) if isinstance(obj, dict) else {}
+                props = info.get("props", {}) if isinstance(info, dict) else {}
+                media_class = props.get("media.class") or ""
+                state = info.get("state") or ""
+                if "Stream/Input/Audio" in media_class and state == "running":
+                    name = (
+                        props.get("application.name")
+                        or props.get("node.name")
+                        or "unknown"
+                    )
+                    apps.append(name)
+            return MicUsage(in_use=bool(apps), apps=tuple(sorted(set(apps))))
+    except (FileNotFoundError, subprocess.SubprocessError, ValueError):
+        pass
+
     return MicUsage(in_use=False, apps=())
 
 
@@ -107,7 +209,8 @@ def microphone_in_use() -> MicUsage:
 
 
 def supported_platform() -> bool:
-    return platform.system() == "Windows"
+    """Whether the helper has a working detector on this OS."""
+    return platform.system() in ("Windows", "Darwin", "Linux")
 
 
 def _self_test(iterations: int = 10, interval_s: float = 1.5) -> int:
