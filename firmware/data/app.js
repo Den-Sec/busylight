@@ -25,6 +25,7 @@ const I18N = {
     "states.BUSY.name": "Busy",
     "states.IN_CALL.name": "In a call",
     "states.AWAY.name": "Away",
+    "states.OFF.name": "Off",
     "states.WIFI_ERROR.name": "No Wi-Fi",
 
     "states.AVAILABLE.tag": "Come on in — the light is on.",
@@ -34,6 +35,8 @@ const I18N = {
       "Blinking red. A call or meeting is in progress.",
     "states.AWAY.tag":
       "Blinking green. Stepped away, back soon.",
+    "states.OFF.tag":
+      "Lights out. Both LEDs off — useful at night.",
     "states.WIFI_ERROR.tag":
       "Can't reach the network — check Wi-Fi credentials.",
 
@@ -41,6 +44,7 @@ const I18N = {
     "states.BUSY.desc": "Solid red · focus mode",
     "states.IN_CALL.desc": "Red blink · meeting",
     "states.AWAY.desc": "Green blink · stepped out",
+    "states.OFF.desc": "Lights out",
 
     "set_state.title": "Set state",
     "set_state.sub": "Tap to switch the desk light",
@@ -169,6 +173,36 @@ const I18N = {
     "errors.mqtt_host_required":
       "Broker host is required when MQTT is enabled.",
     "errors.port_invalid": "Port must be between 1 and 65535.",
+    "errors.schedule_full":
+      "Schedule is full. Remove an entry before adding another.",
+    "errors.days_invalid": "Pick at least one day of the week.",
+    "errors.time_invalid": "Time values are out of range.",
+    "errors.state_invalid": "Unknown target state.",
+
+    "schedule.title": "Schedule",
+    "schedule.lede":
+      "Set the BusyLight automatically based on the time of day. Useful for \"work hours only\" or \"off at night\".",
+    "schedule.empty": "No entries yet. Add one below.",
+    "schedule.meta_count": "{n} of {max}",
+    "schedule.days": "Days",
+    "schedule.from": "From",
+    "schedule.to": "To",
+    "schedule.set_to": "Set to",
+    "schedule.add": "Add entry",
+    "schedule.added": "Schedule entry added.",
+    "schedule.no_days": "Pick at least one day.",
+    "schedule.confirm_remove": "Remove this schedule entry?",
+
+    "day.mon_short": "Mon",
+    "day.tue_short": "Tue",
+    "day.wed_short": "Wed",
+    "day.thu_short": "Thu",
+    "day.fri_short": "Fri",
+    "day.sat_short": "Sat",
+    "day.sun_short": "Sun",
+    "day.weekdays": "Weekdays",
+    "day.weekends": "Weekends",
+    "day.everyday": "Every day",
   },
 
   it: {
@@ -191,6 +225,7 @@ const I18N = {
     "states.BUSY.name": "Occupato",
     "states.IN_CALL.name": "In chiamata",
     "states.AWAY.name": "Assente",
+    "states.OFF.name": "Spento",
     "states.WIFI_ERROR.name": "Senza Wi-Fi",
 
     "states.AVAILABLE.tag":
@@ -201,6 +236,8 @@ const I18N = {
       "Rosso lampeggiante. Sei in una chiamata o riunione.",
     "states.AWAY.tag":
       "Verde lampeggiante. Sei via, torni a breve.",
+    "states.OFF.tag":
+      "Luci spente. Entrambi i LED off — utile di notte.",
     "states.WIFI_ERROR.tag":
       "Rete irraggiungibile — controlla le credenziali Wi-Fi.",
 
@@ -208,6 +245,7 @@ const I18N = {
     "states.BUSY.desc": "Rosso fisso · modalità focus",
     "states.IN_CALL.desc": "Lampeggio rosso · riunione",
     "states.AWAY.desc": "Lampeggio verde · sono via",
+    "states.OFF.desc": "Luci spente",
 
     "set_state.title": "Imposta stato",
     "set_state.sub": "Tocca per cambiare la luce sulla scrivania",
@@ -341,6 +379,36 @@ const I18N = {
     "errors.mqtt_host_required":
       "L'indirizzo del broker è obbligatorio quando MQTT è attivo.",
     "errors.port_invalid": "La porta deve essere tra 1 e 65535.",
+    "errors.schedule_full":
+      "Calendario pieno. Rimuovi una voce prima di aggiungerne un'altra.",
+    "errors.days_invalid": "Scegli almeno un giorno della settimana.",
+    "errors.time_invalid": "Valori orari fuori intervallo.",
+    "errors.state_invalid": "Stato target sconosciuto.",
+
+    "schedule.title": "Pianificazione",
+    "schedule.lede":
+      "Imposta il BusyLight automaticamente in base all'ora. Utile per \"solo orario lavoro\" o \"spento di notte\".",
+    "schedule.empty": "Nessuna voce. Aggiungine una qui sotto.",
+    "schedule.meta_count": "{n} di {max}",
+    "schedule.days": "Giorni",
+    "schedule.from": "Dalle",
+    "schedule.to": "Alle",
+    "schedule.set_to": "Imposta",
+    "schedule.add": "Aggiungi voce",
+    "schedule.added": "Voce aggiunta.",
+    "schedule.no_days": "Scegli almeno un giorno.",
+    "schedule.confirm_remove": "Rimuovo questa voce di pianificazione?",
+
+    "day.mon_short": "Lun",
+    "day.tue_short": "Mar",
+    "day.wed_short": "Mer",
+    "day.thu_short": "Gio",
+    "day.fri_short": "Ven",
+    "day.sat_short": "Sab",
+    "day.sun_short": "Dom",
+    "day.weekdays": "Feriali",
+    "day.weekends": "Weekend",
+    "day.everyday": "Ogni giorno",
   },
 };
 
@@ -410,6 +478,12 @@ function refreshDynamicLabels() {
     // re-fetch so the "Connected" tag is rendered in the new language
     refreshWifiList();
   }
+  if (
+    scheduleList &&
+    !consoleGrid.classList.contains("hidden")
+  ) {
+    renderSchedule(cachedSchedule);
+  }
 }
 
 // ============ DOM refs ============
@@ -461,6 +535,18 @@ const wifiNewSsid = document.getElementById("wifi-new-ssid");
 const wifiNewPassword = document.getElementById("wifi-new-password");
 const wifiAddBtn = document.getElementById("wifi-add-btn");
 const wifiMsg = document.getElementById("wifi-msg");
+
+const scheduleList = document.getElementById("schedule-list");
+const scheduleEmpty = document.getElementById("schedule-empty");
+const scheduleMeta = document.getElementById("schedule-meta");
+const schedStart = document.getElementById("sched-start");
+const schedEnd = document.getElementById("sched-end");
+const schedStateSelect = document.getElementById("sched-state");
+const schedAddBtn = document.getElementById("sched-add-btn");
+const schedMsg = document.getElementById("sched-msg");
+const dayButtons = document.querySelectorAll("[data-day]");
+let pendingScheduleDays = 0;  // bitmask 0..127 (bit0=Sun .. bit6=Sat)
+let cachedSchedule = { entries: [], max: 4 };
 
 const mqttEnabled = document.getElementById("mqtt-enabled");
 const mqttHost = document.getElementById("mqtt-host");
@@ -692,6 +778,200 @@ async function removeWifi(ssid, isCurrent) {
   }
 }
 
+// ---------- Schedule ----------
+
+function formatMinutes(mins) {
+  const h = Math.floor(mins / 60).toString().padStart(2, "0");
+  const m = (mins % 60).toString().padStart(2, "0");
+  return `${h}:${m}`;
+}
+
+function parseTimeStr(value) {
+  const [h, m] = value.split(":").map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m)) return null;
+  if (h < 0 || h > 23 || m < 0 || m > 59) return null;
+  return h * 60 + m;
+}
+
+const _DAY_BITS = [
+  { bit: 1 << 0, k: "day.sun_short" },
+  { bit: 1 << 1, k: "day.mon_short" },
+  { bit: 1 << 2, k: "day.tue_short" },
+  { bit: 1 << 3, k: "day.wed_short" },
+  { bit: 1 << 4, k: "day.thu_short" },
+  { bit: 1 << 5, k: "day.fri_short" },
+  { bit: 1 << 6, k: "day.sat_short" },
+];
+
+function formatDaysMask(mask) {
+  const weekdays = (1 << 1) | (1 << 2) | (1 << 3) | (1 << 4) | (1 << 5);
+  const weekends = (1 << 0) | (1 << 6);
+  if (mask === 0x7F) return t("day.everyday");
+  if (mask === weekdays) return t("day.weekdays");
+  if (mask === weekends) return t("day.weekends");
+  // List the short names of selected days, in Mon..Sun order so it
+  // reads naturally.
+  const order = [1, 2, 3, 4, 5, 6, 0];
+  const labels = order
+    .map((d) => (mask & (1 << d) ? _DAY_BITS[d].k : null))
+    .filter(Boolean)
+    .map(t);
+  return labels.join(" ");
+}
+
+async function refreshSchedule() {
+  if (!scheduleList) return;
+  try {
+    const data = await api("/api/schedule");
+    cachedSchedule = data;
+    renderSchedule(data);
+  } catch (err) {
+    if (err.status === 401) showLogin();
+    if (schedMsg) schedMsg.textContent = err.message;
+  }
+}
+
+function renderSchedule(data) {
+  if (!scheduleList) return;
+  scheduleList.innerHTML = "";
+  const entries = Array.isArray(data.entries) ? data.entries : [];
+  const max = typeof data.max === "number" ? data.max : 4;
+
+  for (let i = 0; i < entries.length; i++) {
+    const e = entries[i];
+    const li = document.createElement("li");
+    li.className = "schedule-row" + (e.enabled ? "" : " disabled");
+
+    const when = document.createElement("span");
+    when.className = "schedule-row-when";
+    when.textContent =
+      `${formatDaysMask(e.days)}  ·  ${formatMinutes(e.start)}–${formatMinutes(e.end)}`;
+    li.appendChild(when);
+
+    const target = document.createElement("span");
+    target.className = "schedule-row-target";
+    target.style.color = stateColor(e.state);
+    const dot = document.createElement("span");
+    dot.className = "schedule-row-dot";
+    target.appendChild(dot);
+    const label = document.createElement("span");
+    label.textContent = t(`states.${e.state}.name`);
+    label.style.color = "var(--ink)";
+    target.appendChild(label);
+    li.appendChild(target);
+
+    const ctrl = document.createElement("span");
+    ctrl.className = "schedule-row-controls";
+
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.title = e.enabled ? "Disable" : "Enable";
+    toggle.textContent = e.enabled ? "⏸" : "▶";
+    toggle.addEventListener("click", () => toggleScheduleEntry(i));
+    ctrl.appendChild(toggle);
+
+    const rm = document.createElement("button");
+    rm.type = "button";
+    rm.className = "remove";
+    rm.textContent = "×";
+    rm.addEventListener("click", () => removeScheduleEntry(i));
+    ctrl.appendChild(rm);
+
+    li.appendChild(ctrl);
+    scheduleList.appendChild(li);
+  }
+
+  if (scheduleEmpty) scheduleEmpty.hidden = entries.length > 0;
+  if (scheduleMeta) {
+    scheduleMeta.textContent = t("schedule.meta_count")
+      .replace("{n}", String(entries.length))
+      .replace("{max}", String(max));
+  }
+}
+
+function stateColor(state) {
+  switch (state) {
+    case "AVAILABLE": return "var(--available)";
+    case "BUSY":      return "var(--busy)";
+    case "IN_CALL":   return "var(--in-call)";
+    case "AWAY":      return "var(--away)";
+    case "OFF":       return "var(--off, #94989f)";
+    default:          return "var(--ink-mute)";
+  }
+}
+
+dayButtons.forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const d = Number(btn.dataset.day);
+    pendingScheduleDays ^= 1 << d;
+    btn.classList.toggle("active");
+  });
+});
+
+async function persistSchedule(entries) {
+  await api("/api/schedule", {
+    method: "POST",
+    body: JSON.stringify({ entries }),
+  });
+  await refreshSchedule();
+}
+
+async function addScheduleEntry() {
+  schedMsg.textContent = "";
+  if (pendingScheduleDays === 0) {
+    schedMsg.textContent = t("schedule.no_days");
+    return;
+  }
+  const start = parseTimeStr(schedStart.value || "09:00");
+  const end = parseTimeStr(schedEnd.value || "18:00");
+  if (start == null || end == null) {
+    schedMsg.textContent = t("errors.time_invalid");
+    return;
+  }
+  const next = [
+    ...cachedSchedule.entries,
+    {
+      enabled: true,
+      days: pendingScheduleDays,
+      start,
+      end,
+      state: schedStateSelect.value,
+    },
+  ];
+  try {
+    await persistSchedule(next);
+    schedMsg.textContent = t("schedule.added");
+    // reset form
+    pendingScheduleDays = 0;
+    dayButtons.forEach((b) => b.classList.remove("active"));
+  } catch (err) {
+    schedMsg.textContent = err.message;
+  }
+}
+
+async function removeScheduleEntry(index) {
+  if (!confirm(t("schedule.confirm_remove"))) return;
+  const next = cachedSchedule.entries.filter((_, i) => i !== index);
+  try {
+    await persistSchedule(next);
+  } catch (err) {
+    schedMsg.textContent = err.message;
+  }
+}
+
+async function toggleScheduleEntry(index) {
+  const next = cachedSchedule.entries.map((e, i) =>
+    i === index ? { ...e, enabled: !e.enabled } : e
+  );
+  try {
+    await persistSchedule(next);
+  } catch (err) {
+    schedMsg.textContent = err.message;
+  }
+}
+
+if (schedAddBtn) schedAddBtn.addEventListener("click", addScheduleEntry);
+
 async function refreshMqtt() {
   if (!mqttHost) return;
   try {
@@ -761,6 +1041,7 @@ async function initSession() {
     await refreshState();
     await refreshSettings();
     await refreshWifiList();
+    await refreshSchedule();
     await refreshMqtt();
     showApp();
   } catch (err) {

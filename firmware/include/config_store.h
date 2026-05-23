@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "led_engine.h"
+#include "schedule.h"
 
 struct WifiNetwork {
   String ssid;
@@ -33,6 +34,10 @@ struct DeviceConfig {
   // Set by api_server when the MQTT settings change so main.cpp can
   // re-initialise the MQTT client.
   bool mqttConfigDirty;
+  std::vector<ScheduleEntry> schedule;
+  // Set by api_server when the schedule list changes so main.cpp
+  // rebuilds the in-memory Scheduler.
+  bool scheduleDirty;
 };
 
 class ConfigStore {
@@ -53,6 +58,8 @@ class ConfigStore {
   bool saveState(BusyStatus state);
   MqttConfig loadMqtt();
   bool saveMqtt(const MqttConfig& cfg);
+  std::vector<ScheduleEntry> loadSchedule();
+  bool saveSchedule(const std::vector<ScheduleEntry>& entries);
   // Wipe every key in our NVS namespace. The device must reboot afterwards.
   bool clear();
 

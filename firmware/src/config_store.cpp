@@ -1,5 +1,6 @@
 #include "config_store.h"
 
+#include <ArduinoJson.h>
 #include <Preferences.h>
 
 namespace {
@@ -77,7 +78,12 @@ DeviceConfig ConfigStore::load() {
 
   cfg.pinHash = prefs.getString("pin", "");
   unsigned int rawState = prefs.getUInt("state", STATUS_AVAILABLE);
-  if (rawState > STATUS_AWAY) {
+  // Accept only persistable "manual" states. WIFI_ERROR is transient
+  // (transport-level), and anything out of range from an older / newer
+  // firmware would otherwise leave the LED in an undefined pattern.
+  if (rawState != STATUS_AVAILABLE && rawState != STATUS_BUSY &&
+      rawState != STATUS_IN_CALL && rawState != STATUS_AWAY &&
+      rawState != STATUS_OFF) {
     rawState = STATUS_AVAILABLE;
   }
   cfg.lastState = static_cast<BusyStatus>(rawState);
@@ -86,6 +92,7 @@ DeviceConfig ConfigStore::load() {
   cfg.networks = loadNetworks();
   cfg.configured = !cfg.networks.empty();
   cfg.mqtt = loadMqtt();
+  cfg.schedule = loadSchedule();
   return cfg;
 }
 
@@ -110,6 +117,80 @@ bool ConfigStore::saveMqtt(const MqttConfig& cfg) {
   prefs.putUInt("mqtt_port", cfg.port);
   prefs.putString("mqtt_user", cfg.username);
   prefs.putString("mqtt_pass", cfg.password);
+  prefs.end();
+  return true;
+}
+
+namespace {
+
+const char* scheduleStateToStr(BusyStatus s) {
+  switch (s) {
+    case STATUS_AVAILABLE: return "AVAILABLE";
+    case STATUS_BUSY:      return "BUSY";
+    case STATUS_IN_CALL:   return "IN_CALL";
+    case STATUS_AWAY:      return "AWAY";
+    case STATUS_OFF:       return "OFF";
+    default:               return "AVAILABLE";
+  }
+}
+
+bool scheduleParseState(const char* s, BusyStatus& out) {
+  if (!s) return false;
+  String v(s);
+  if (v == "AVAILABLE") { out = STATUS_AVAILABLE; return true; }
+  if (v == "BUSY")      { out = STATUS_BUSY;      return true; }
+  if (v == "IN_CALL")   { out = STATUS_IN_CALL;   return true; }
+  if (v == "AWAY")      { out = STATUS_AWAY;      return true; }
+  if (v == "OFF")       { out = STATUS_OFF;       return true; }
+  return false;
+}
+
+}  // namespace
+
+std::vector<ScheduleEntry> ConfigStore::loadSchedule() {
+  std::vector<ScheduleEntry> out;
+  Preferences prefs;
+  if (!prefs.begin(kNs, true)) return out;
+  String json = prefs.getString("sched_json", "");
+  prefs.end();
+  if (json.length() == 0) return out;
+
+  JsonDocument doc;
+  if (deserializeJson(doc, json)) return out;
+  if (!doc.is<JsonArray>()) return out;
+
+  for (JsonObject obj : doc.as<JsonArray>()) {
+    if (out.size() >= Scheduler::kMaxEntries) break;
+    ScheduleEntry e;
+    e.enabled = obj["e"].is<bool>() ? obj["e"].as<bool>() : true;
+    e.daysMask = static_cast<uint8_t>(obj["d"].as<int>());
+    e.startMinute = static_cast<uint16_t>(obj["s"].as<int>());
+    e.endMinute = static_cast<uint16_t>(obj["f"].as<int>());
+    if (!scheduleParseState(obj["t"].as<const char*>(), e.targetState)) {
+      continue;
+    }
+    out.push_back(e);
+  }
+  return out;
+}
+
+bool ConfigStore::saveSchedule(const std::vector<ScheduleEntry>& entries) {
+  JsonDocument doc;
+  JsonArray arr = doc.to<JsonArray>();
+  for (size_t i = 0; i < entries.size() && i < Scheduler::kMaxEntries; i++) {
+    JsonObject obj = arr.add<JsonObject>();
+    obj["e"] = entries[i].enabled;
+    obj["d"] = entries[i].daysMask;
+    obj["s"] = entries[i].startMinute;
+    obj["f"] = entries[i].endMinute;
+    obj["t"] = scheduleStateToStr(entries[i].targetState);
+  }
+  String json;
+  serializeJson(doc, json);
+
+  Preferences prefs;
+  if (!prefs.begin(kNs, false)) return false;
+  prefs.putString("sched_json", json);
   prefs.end();
   return true;
 }

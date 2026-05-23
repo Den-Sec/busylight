@@ -127,6 +127,13 @@
                 <span class="tile-desc" data-i18n="states.AWAY.desc">Green blink · stepped out</span>
               </span>
             </button>
+            <button class="tile" data-state="OFF">
+              <span class="tile-swatch"></span>
+              <span class="tile-text">
+                <span class="tile-name" data-i18n="states.OFF.name">Off</span>
+                <span class="tile-desc" data-i18n="states.OFF.desc">Lights out</span>
+              </span>
+            </button>
           </div>
           <p class="msg msg--center" id="state-msg"></p>
         </section>
@@ -231,6 +238,62 @@
                 <span class="cta-arrow" aria-hidden="true">→</span>
               </button>
               <p class="msg" id="wifi-msg" role="status"></p>
+            </div>
+          </div>
+        </section>
+
+        <!-- SCHEDULE -->
+        <section class="block" id="schedule-card">
+          <header class="block-head">
+            <h2 data-i18n="schedule.title">Schedule</h2>
+            <span class="block-sub" id="schedule-meta"></span>
+          </header>
+          <div class="block-body">
+            <p class="lede lede--sm" data-i18n="schedule.lede">
+              Set the BusyLight automatically based on the time of day. Useful for "work hours only" or "off at night".
+            </p>
+            <ul class="schedule-list" id="schedule-list" aria-live="polite"></ul>
+            <p class="lede lede--sm" id="schedule-empty" data-i18n="schedule.empty" hidden>
+              No schedule yet. Add one below.
+            </p>
+
+            <div class="schedule-add">
+              <div class="field">
+                <label data-i18n="schedule.days">Days</label>
+                <div class="day-picker">
+                  <button type="button" class="day-btn" data-day="1" data-i18n="day.mon_short">Mon</button>
+                  <button type="button" class="day-btn" data-day="2" data-i18n="day.tue_short">Tue</button>
+                  <button type="button" class="day-btn" data-day="3" data-i18n="day.wed_short">Wed</button>
+                  <button type="button" class="day-btn" data-day="4" data-i18n="day.thu_short">Thu</button>
+                  <button type="button" class="day-btn" data-day="5" data-i18n="day.fri_short">Fri</button>
+                  <button type="button" class="day-btn" data-day="6" data-i18n="day.sat_short">Sat</button>
+                  <button type="button" class="day-btn" data-day="0" data-i18n="day.sun_short">Sun</button>
+                </div>
+              </div>
+              <div class="schedule-time-row">
+                <div class="field">
+                  <label for="sched-start" data-i18n="schedule.from">From</label>
+                  <input id="sched-start" type="time" value="09:00" />
+                </div>
+                <div class="field">
+                  <label for="sched-end" data-i18n="schedule.to">To</label>
+                  <input id="sched-end" type="time" value="18:00" />
+                </div>
+                <div class="field">
+                  <label for="sched-state" data-i18n="schedule.set_to">Set to</label>
+                  <select id="sched-state">
+                    <option value="AVAILABLE">Available</option>
+                    <option value="BUSY">Busy</option>
+                    <option value="AWAY">Away</option>
+                    <option value="OFF" selected>Off</option>
+                  </select>
+                </div>
+              </div>
+              <button id="sched-add-btn" type="button" class="cta cta--block">
+                <span data-i18n="schedule.add">Add entry</span>
+                <span class="cta-arrow" aria-hidden="true">→</span>
+              </button>
+              <p class="msg" id="sched-msg" role="status"></p>
             </div>
           </div>
         </section>

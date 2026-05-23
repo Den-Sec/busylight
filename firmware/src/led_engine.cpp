@@ -43,6 +43,9 @@ void LedEngine::setState(BusyStatus state) {
   } else if (state_ == STATUS_BUSY) {
     redOn_ = true;
     greenOn_ = false;
+  } else if (state_ == STATUS_OFF) {
+    redOn_ = false;
+    greenOn_ = false;
   }
 
   applyOutputs();

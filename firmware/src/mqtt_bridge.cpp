@@ -10,6 +10,7 @@ const char* stateToStr(BusyStatus s) {
     case STATUS_BUSY:      return "BUSY";
     case STATUS_IN_CALL:   return "IN_CALL";
     case STATUS_AWAY:      return "AWAY";
+    case STATUS_OFF:       return "OFF";
     case STATUS_WIFI_ERROR:return "WIFI_ERROR";
     default:               return "AVAILABLE";
   }
@@ -20,6 +21,7 @@ bool parseState(const String& s, BusyStatus& out) {
   if (s == "BUSY")      { out = STATUS_BUSY;      return true; }
   if (s == "IN_CALL")   { out = STATUS_IN_CALL;   return true; }
   if (s == "AWAY")      { out = STATUS_AWAY;      return true; }
+  if (s == "OFF")       { out = STATUS_OFF;       return true; }
   return false;
 }
 
@@ -118,6 +120,7 @@ void MqttBridge::publishDiscovery_() {
   options.add("BUSY");
   options.add("IN_CALL");
   options.add("AWAY");
+  options.add("OFF");
   JsonObject device = doc["device"].to<JsonObject>();
   JsonArray ids = device["identifiers"].to<JsonArray>();
   ids.add(hostname_);

@@ -12,6 +12,10 @@
 #include "hostname.h"
 #include "led_engine.h"
 #include "mqtt_bridge.h"
+#include "schedule.h"
+
+#include <ctime>
+#include <time.h>
 
 namespace {
 
@@ -33,6 +37,19 @@ ApiServer gApi(&gLed, &gStore, &gAuth, &gConfig);
 ApPortal gApPortal;
 WiFiMulti gWifiMulti;
 MqttBridge gMqtt;
+Scheduler gScheduler;
+bool gTimeSynced = false;
+unsigned long gLastScheduleTickMs = 0;
+BusyStatus gLastScheduleApplied = STATUS_AVAILABLE;
+bool gScheduleHasApplied = false;
+// Europe/Rome with automatic DST. Switch via build flag if you ship
+// the device outside Italy.
+constexpr const char* kTimezoneSpec =
+#ifdef BUSYLIGHT_TZ
+    BUSYLIGHT_TZ;
+#else
+    "CET-1CEST,M3.5.0,M10.5.0/3";
+#endif
 
 bool gServerStarted = false;
 bool gLittleFsOk = false;
@@ -80,6 +97,58 @@ void rebuildWifiMulti() {
       gWifiMulti.addAP(net.ssid.c_str(), net.password.c_str());
     }
   }
+}
+
+void rebuildScheduler() {
+  gScheduler.setEntries(gConfig.schedule);
+  // Force re-application of any matching entry next tick.
+  gScheduleHasApplied = false;
+  gLastScheduleTickMs = 0;
+}
+
+void startNtpIfNeeded() {
+  if (gTimeSynced) return;
+  configTime(0, 0, "pool.ntp.org", "time.cloudflare.com");
+  setenv("TZ", kTimezoneSpec, 1);
+  tzset();
+  // configTime is async. Mark synced when localtime year reaches a sane
+  // value (the ESP boots with year 1970 until the SNTP reply lands).
+  time_t now = time(nullptr);
+  if (now > 1700000000L) {  // > 2023-11-14
+    gTimeSynced = true;
+    Serial.println("{\"ok\":true,\"event\":\"ntp_synced\"}");
+  }
+}
+
+void scheduleTick() {
+  startNtpIfNeeded();
+  if (!gTimeSynced) {
+    // Re-check once SNTP eventually responds.
+    time_t now = time(nullptr);
+    if (now > 1700000000L) {
+      gTimeSynced = true;
+      Serial.println("{\"ok\":true,\"event\":\"ntp_synced\"}");
+    } else {
+      return;
+    }
+  }
+
+  unsigned long ms = millis();
+  if (gLastScheduleTickMs != 0 && (ms - gLastScheduleTickMs) < 20000) {
+    return;
+  }
+  gLastScheduleTickMs = ms;
+
+  time_t now = time(nullptr);
+  BusyStatus desired;
+  if (!gScheduler.currentDesiredState(now, desired)) {
+    gScheduleHasApplied = false;
+    return;
+  }
+  if (gScheduleHasApplied && desired == gLastScheduleApplied) return;
+  gApi.applyState(desired);
+  gLastScheduleApplied = desired;
+  gScheduleHasApplied = true;
 }
 
 void startServerIfNeeded() {
@@ -356,6 +425,7 @@ void setup() {
   applyDefaultPinIfMissing();
 
   rebuildWifiMulti();
+  rebuildScheduler();
 
   if (gConfig.configured) {
     WiFi.mode(WIFI_STA);
@@ -381,6 +451,11 @@ void loop() {
     gWifi.nextRetryMs = 0;
   }
 
+  if (gConfig.scheduleDirty) {
+    gConfig.scheduleDirty = false;
+    rebuildScheduler();
+  }
+
   networkingTick();
 
   if (gServerStarted) {
@@ -390,6 +465,7 @@ void loop() {
       gMqtt.configure(gConfig.mqtt);
     }
     gMqtt.loop();
+    scheduleTick();
     persistStateIfDebounced();
     handlePendingDeviceActions();
   }

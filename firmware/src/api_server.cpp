@@ -53,6 +53,8 @@ const char* statusToString(BusyStatus s) {
       return "IN_CALL";
     case STATUS_AWAY:
       return "AWAY";
+    case STATUS_OFF:
+      return "OFF";
     case STATUS_WIFI_ERROR:
       return "WIFI_ERROR";
     default:
@@ -75,6 +77,10 @@ bool parseStatus(const String& value, BusyStatus& out) {
   }
   if (value == "AWAY") {
     out = STATUS_AWAY;
+    return true;
+  }
+  if (value == "OFF") {
+    out = STATUS_OFF;
     return true;
   }
   return false;
@@ -321,7 +327,7 @@ void ApiServer::registerRoutes_() {
     if (!parseStatus(String(static_cast<const char*>(in["state"])), st)) {
       sendJson_(400,
                 "{\"error\":\"invalid_state\",\"allowed\":[\"AVAILABLE\","
-                "\"BUSY\",\"IN_CALL\",\"AWAY\"]}");
+                "\"BUSY\",\"IN_CALL\",\"AWAY\",\"OFF\"]}");
       return;
     }
 
@@ -496,6 +502,80 @@ void ApiServer::registerRoutes_() {
     config_->networks = configStore_->loadNetworks();
     config_->configured = !config_->networks.empty();
     config_->wifiListDirty = true;
+    sendJson_(200, "{\"ok\":true}");
+  });
+
+  // ----- schedule -----
+  server_.on("/api/schedule", HTTP_GET, [&]() {
+    if (!requireAuth_()) return;
+    JsonDocument out;
+    out["max"] = static_cast<unsigned>(Scheduler::kMaxEntries);
+    JsonArray arr = out["entries"].to<JsonArray>();
+    for (const auto& e : config_->schedule) {
+      JsonObject o = arr.add<JsonObject>();
+      o["enabled"] = e.enabled;
+      o["days"] = e.daysMask;
+      o["start"] = e.startMinute;
+      o["end"] = e.endMinute;
+      o["state"] = statusToString(e.targetState);
+    }
+    String body;
+    serializeJson(out, body);
+    sendJson_(200, body);
+  });
+
+  // POST replaces the full list. Body: {"entries":[{enabled, days,
+  // start, end, state}, ...]}. Cap at Scheduler::kMaxEntries; reject
+  // entries with out-of-range times or unknown states.
+  server_.on("/api/schedule", HTTP_POST, [&]() {
+    String sessionToken;
+    if (!requireAuth_(&sessionToken)) return;
+    if (!requireCsrf_(sessionToken)) return;
+
+    JsonDocument in;
+    auto err = deserializeJson(in, readBody_());
+    if (err || !in["entries"].is<JsonArray>()) {
+      sendJsonErr_(400, "invalid_payload");
+      return;
+    }
+
+    std::vector<ScheduleEntry> next;
+    for (JsonObject obj : in["entries"].as<JsonArray>()) {
+      if (next.size() >= Scheduler::kMaxEntries) {
+        sendJsonErr_(409, "schedule_full");
+        return;
+      }
+      ScheduleEntry e;
+      e.enabled =
+          obj["enabled"].is<bool>() ? obj["enabled"].as<bool>() : true;
+      int days = obj["days"].as<int>();
+      int start = obj["start"].as<int>();
+      int finish = obj["end"].as<int>();
+      if (days < 0 || days > 0x7F) {
+        sendJsonErr_(422, "days_invalid");
+        return;
+      }
+      if (start < 0 || start > 1439 || finish < 0 || finish > 1439) {
+        sendJsonErr_(422, "time_invalid");
+        return;
+      }
+      e.daysMask = static_cast<uint8_t>(days);
+      e.startMinute = static_cast<uint16_t>(start);
+      e.endMinute = static_cast<uint16_t>(finish);
+      if (!parseStatus(String(obj["state"].as<const char*>() ?: ""),
+                       e.targetState)) {
+        sendJsonErr_(422, "state_invalid");
+        return;
+      }
+      next.push_back(e);
+    }
+
+    if (!configStore_->saveSchedule(next)) {
+      sendJsonErr_(500, "save_failed");
+      return;
+    }
+    config_->schedule = next;
+    config_->scheduleDirty = true;
     sendJson_(200, "{\"ok\":true}");
   });
 

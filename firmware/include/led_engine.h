@@ -5,7 +5,8 @@ enum BusyStatus {
   STATUS_BUSY = 1,
   STATUS_IN_CALL = 2,
   STATUS_AWAY = 3,
-  STATUS_WIFI_ERROR = 4
+  STATUS_WIFI_ERROR = 4,
+  STATUS_OFF = 5,
 };
 
 class LedEngine {

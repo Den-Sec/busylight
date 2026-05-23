@@ -30,6 +30,9 @@
   --away: #6c8bbd;
   --away-2: #94abd0;
   --away-soft: #dde4ef;
+  --off: #94989f;
+  --off-2: #b5bac1;
+  --off-soft: #e5e7eb;
 
   --accent: var(--available);
   --accent-2: var(--available-2);
@@ -694,8 +697,12 @@ input[type="file"]:focus {
 
 .tiles {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px;
+}
+
+@media (max-width: 980px) {
+  .tiles { grid-template-columns: repeat(3, 1fr); }
 }
 
 @media (max-width: 720px) {
@@ -740,6 +747,7 @@ input[type="file"]:focus {
 .tile[data-state="BUSY"] .tile-swatch { background: var(--busy); }
 .tile[data-state="IN_CALL"] .tile-swatch { background: var(--in-call); }
 .tile[data-state="AWAY"] .tile-swatch { background: var(--away); }
+.tile[data-state="OFF"] .tile-swatch { background: var(--off); }
 
 .tile-text {
   display: flex;
@@ -793,6 +801,158 @@ input[type="file"]:focus {
   background:
     linear-gradient(180deg, var(--away-soft), transparent 75%),
     var(--surface);
+}
+
+.tile[data-state="OFF"].active {
+  color: var(--off);
+  background:
+    linear-gradient(180deg, var(--off-soft), transparent 75%),
+    var(--surface);
+}
+
+.hero[data-state="OFF"] { color: var(--off); }
+
+/* ===== SCHEDULE ===== */
+.schedule-list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.schedule-list:empty { display: none; }
+
+.schedule-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+
+.schedule-row.disabled { opacity: 0.55; }
+
+.schedule-row-when {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.schedule-row-target {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--grid);
+  font-weight: 500;
+  font-size: 13.5px;
+}
+
+.schedule-row-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.schedule-row-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.schedule-row-controls button {
+  appearance: none;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  color: var(--ink-mute);
+  font-size: 14px;
+  line-height: 1;
+  display: inline-grid;
+  place-items: center;
+}
+
+.schedule-row-controls .remove:hover {
+  background: var(--busy-soft);
+  color: var(--busy);
+  border-color: var(--busy);
+}
+
+.schedule-add {
+  border-top: 1px dashed var(--line-strong);
+  padding-top: 10px;
+  margin-top: 8px;
+}
+
+.day-picker {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.day-btn {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-mute);
+  padding: 6px 11px;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  letter-spacing: 0.02em;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.day-btn:hover { color: var(--ink); }
+
+.day-btn.active {
+  background: var(--ink);
+  color: var(--surface);
+  border-color: var(--ink);
+}
+
+.schedule-time-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.4fr;
+  gap: 12px;
+}
+
+@media (max-width: 520px) {
+  .schedule-time-row { grid-template-columns: 1fr; }
+}
+
+input[type="time"],
+select {
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 16px;
+  font-weight: 500;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+
+select {
+  font-family: var(--grid);
+  appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 14 14'><path fill='%2394989f' d='M3 5l4 4 4-4z'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 34px;
 }
 
 .tile.active .tile-name { color: var(--ink); }
