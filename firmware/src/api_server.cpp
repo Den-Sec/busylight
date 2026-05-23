@@ -79,6 +79,7 @@ ApiServer::ApiServer(LedEngine* led,
                      AuthManager* auth,
                      DeviceConfig* config)
     : server_(80),
+      ws_(81),
       led_(led),
       configStore_(configStore),
       auth_(auth),
@@ -97,9 +98,37 @@ void ApiServer::begin(bool littleFsMounted) {
   server_.collectHeaders(headerKeys, 3);
   registerRoutes_();
   server_.begin();
+
+  // WebSocket lives on a separate port: the stock WebServer doesn't
+  // support the protocol upgrade, so we run a dedicated server on :81
+  // and push state events to any browser that opens it.
+  ws_.begin();
+  ws_.onEvent([this](uint8_t num, WStype_t type, uint8_t* /*payload*/,
+                     size_t /*length*/) {
+    if (type == WStype_CONNECTED) {
+      // Send the current state to the just-connected client so it can
+      // hydrate the orb without waiting for the next change.
+      char buf[80];
+      snprintf(buf, sizeof(buf),
+               "{\"event\":\"state\",\"state\":\"%s\"}",
+               statusToString(led_->currentState()));
+      ws_.sendTXT(num, buf);
+    }
+  });
 }
 
-void ApiServer::handleClient() { server_.handleClient(); }
+void ApiServer::handleClient() {
+  server_.handleClient();
+  ws_.loop();
+}
+
+void ApiServer::broadcastState() {
+  char buf[80];
+  snprintf(buf, sizeof(buf),
+           "{\"event\":\"state\",\"state\":\"%s\"}",
+           statusToString(led_->currentState()));
+  ws_.broadcastTXT(buf);
+}
 
 void ApiServer::clearStateDirty() {
   stateDirty_ = false;
@@ -278,6 +307,7 @@ void ApiServer::registerRoutes_() {
       stateDirty_ = true;
       stateDirtyAtMs_ = millis();
     }
+    broadcastState();
     sendJson_(200, "{\"ok\":true}");
   });
 

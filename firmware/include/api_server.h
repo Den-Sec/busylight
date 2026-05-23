@@ -1,6 +1,7 @@
 #pragma once
 
 #include <WebServer.h>
+#include <WebSocketsServer.h>
 
 #include "auth.h"
 #include "config_store.h"
@@ -33,8 +34,14 @@ class ApiServer {
   // this so the reboot does not interrupt the HTTP response.
   bool rebootRequested() const { return rebootRequested_; }
 
+  // Push the current state to all connected WebSocket clients. Called
+  // by every code path that flips the LED (web API, AP portal save,
+  // periodic refresh). Cheap when no client is attached.
+  void broadcastState();
+
  private:
   WebServer server_;
+  WebSocketsServer ws_;
   LedEngine* led_;
   ConfigStore* configStore_;
   AuthManager* auth_;

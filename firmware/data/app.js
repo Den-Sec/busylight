@@ -471,7 +471,10 @@ async function initSession() {
   }
 }
 
-// Periodically refresh uptime + state so the orb stays in sync.
+// Periodically refresh uptime + state so the orb stays in sync. With
+// WebSockets connected the orb already updates in real-time, but we
+// keep polling at a relaxed cadence to refresh uptime/RSSI and to
+// recover the state if the socket is wedged.
 let refreshTimer = null;
 function startPeriodicRefresh() {
   if (refreshTimer) return;
@@ -483,6 +486,72 @@ function startPeriodicRefresh() {
       // ignore transient errors
     }
   }, 5000);
+}
+
+// ============ WebSocket live state ============
+//
+// The firmware exposes a WebSocket server on port 81 and pushes a
+// `{event:"state",state:"..."}` payload whenever the LED flips —
+// triggered both by the local web API and (later) by external
+// controllers like the presence helper. The page subscribes on login
+// success and reconnects with backoff if the socket drops.
+
+let ws = null;
+let wsReconnectTimer = null;
+let wsReconnectDelayMs = 1500;
+
+function startWebSocket() {
+  if (ws || consoleGrid.classList.contains("hidden")) return;
+  const host = window.location.hostname || "busylight.local";
+  const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+  try {
+    ws = new WebSocket(`${proto}//${host}:81/`);
+  } catch {
+    scheduleWsReconnect();
+    return;
+  }
+
+  ws.onopen = () => {
+    wsReconnectDelayMs = 1500; // reset backoff on successful connect
+  };
+  ws.onmessage = (ev) => {
+    try {
+      const msg = JSON.parse(ev.data);
+      if (msg.event === "state" && msg.state) {
+        setStateUi(msg.state);
+      }
+    } catch {
+      // ignore non-JSON
+    }
+  };
+  ws.onclose = () => {
+    ws = null;
+    scheduleWsReconnect();
+  };
+  ws.onerror = () => {
+    // onclose will fire next; handled there.
+  };
+}
+
+function scheduleWsReconnect() {
+  if (wsReconnectTimer) return;
+  if (consoleGrid.classList.contains("hidden")) return;
+  wsReconnectTimer = setTimeout(() => {
+    wsReconnectTimer = null;
+    wsReconnectDelayMs = Math.min(wsReconnectDelayMs * 1.6, 15000);
+    startWebSocket();
+  }, wsReconnectDelayMs);
+}
+
+function stopWebSocket() {
+  if (wsReconnectTimer) {
+    clearTimeout(wsReconnectTimer);
+    wsReconnectTimer = null;
+  }
+  if (ws) {
+    try { ws.close(); } catch {}
+    ws = null;
+  }
 }
 
 // ============ Handlers ============
@@ -502,6 +571,7 @@ loginBtn.addEventListener("click", async () => {
     pinInput.value = "";
     await initSession();
     startPeriodicRefresh();
+    startWebSocket();
   } catch (err) {
     loginMsg.textContent = err.message;
   }
@@ -534,6 +604,7 @@ logoutBtn.addEventListener("click", async () => {
   } catch {
     // ignore
   }
+  stopWebSocket();
   showLogin();
 });
 
@@ -672,5 +743,6 @@ setLang(currentLang);  // marks the right button active
 initSession().then(() => {
   if (!consoleGrid.classList.contains("hidden")) {
     startPeriodicRefresh();
+    startWebSocket();
   }
 });
