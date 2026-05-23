@@ -1,0 +1,4 @@
+# BusyLight Presence runtime dependencies.
+# Everything we use on Windows ships in CPython's stdlib (winreg,
+# urllib, http.cookiejar, configparser). No third-party deps for the
+# core helper. The tray icon (added later) brings pystray + Pillow.

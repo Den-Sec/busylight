@@ -16,6 +16,18 @@ windows_setup/.coverage
 windows_setup/.pytest_cache/
 windows_setup/htmlcov/
 
+# All Python virtualenvs (catch-all)
+**/.venv/
+**/venv/
+
+# Presence helper artefacts
+presence_helper/build/
+presence_helper/dist/
+presence_helper/*.spec
+presence_helper/.coverage
+presence_helper/.pytest_cache/
+presence_helper/htmlcov/
+
 # Python caches
 **/__pycache__/
 **/*.pyc

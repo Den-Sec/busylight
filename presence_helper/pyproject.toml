@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "busylight-presence"
+version = "0.1.0"
+description = "Auto-switch a BusyLight to IN_CALL while any app is using the microphone."
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Dennis Sepede" }]
+
+[project.scripts]
+busylight-presence = "busylight_presence.main:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-ra"
+
+[tool.coverage.run]
+source = ["busylight_presence"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+  "pragma: no cover",
+  "if __name__ == .__main__.:",
+]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
