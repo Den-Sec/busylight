@@ -12,6 +12,9 @@ windows_setup/*.spec
 windows_setup/logs/
 windows_setup/pingdiag-*.log
 windows_setup/*.log
+windows_setup/.coverage
+windows_setup/.pytest_cache/
+windows_setup/htmlcov/
 
 # Python caches
 **/__pycache__/
