@@ -7,9 +7,17 @@
 #include <Update.h>
 #include <WiFi.h>
 
+#include <mbedtls/base64.h>
+#include <mbedtls/md.h>
+#include <mbedtls/pk.h>
+#include <mbedtls/sha256.h>
+
+#include "signing_pubkey.h"
+
 namespace {
 
 constexpr size_t kOtaMinBytes = 100UL * 1024UL;
+constexpr size_t kOtaSignatureBytes = 256;  // RSA-2048
 
 const char kRecoveryHtml[] PROGMEM = R"HTML(<!doctype html>
 <html lang="en">
@@ -90,12 +98,15 @@ ApiServer::ApiServer(LedEngine* led,
       rebootRequested_(false),
       littleFsOk_(false),
       otaAuthOk_(false),
-      otaError_(false) {}
+      otaError_(false),
+      otaSignatureLen_(0),
+      otaShaCtx_(nullptr) {}
 
 void ApiServer::begin(bool littleFsMounted) {
   littleFsOk_ = littleFsMounted;
-  const char* headerKeys[] = {"Cookie", "X-CSRF-Token", "X-Confirm"};
-  server_.collectHeaders(headerKeys, 3);
+  const char* headerKeys[] = {"Cookie", "X-CSRF-Token", "X-Confirm",
+                              "X-Firmware-Signature"};
+  server_.collectHeaders(headerKeys, 4);
   registerRoutes_();
   server_.begin();
 
@@ -604,6 +615,15 @@ void ApiServer::registerRoutes_() {
         if (upload.status == UPLOAD_FILE_START) {
           otaError_ = false;
           otaErrorMsg_ = "";
+          otaSignatureLen_ = 0;
+          // Tear down any context left from a previous failed run.
+          if (otaShaCtx_) {
+            mbedtls_sha256_free(
+                static_cast<mbedtls_sha256_context*>(otaShaCtx_));
+            delete static_cast<mbedtls_sha256_context*>(otaShaCtx_);
+            otaShaCtx_ = nullptr;
+          }
+
           String sessionToken = sessionTokenFromCookie_();
           if (!auth_->isSessionValid(sessionToken, millis()) ||
               !auth_->isCsrfValid(sessionToken, csrfTokenFromHeader_())) {
@@ -613,6 +633,33 @@ void ApiServer::registerRoutes_() {
             return;
           }
           otaAuthOk_ = true;
+
+          // Decode the signature header (base64 of 256 bytes). Reject
+          // any upload without a signature; the device only accepts
+          // images signed by the embedded public key.
+          if (!server_.hasHeader("X-Firmware-Signature")) {
+            otaError_ = true;
+            otaErrorMsg_ = "signature_missing";
+            return;
+          }
+          String b64 = server_.header("X-Firmware-Signature");
+          b64.trim();
+          size_t outLen = 0;
+          int rc = mbedtls_base64_decode(
+              otaSignature_, sizeof(otaSignature_), &outLen,
+              reinterpret_cast<const unsigned char*>(b64.c_str()),
+              b64.length());
+          if (rc != 0 || outLen != kOtaSignatureBytes) {
+            otaError_ = true;
+            otaErrorMsg_ = "signature_malformed";
+            return;
+          }
+          otaSignatureLen_ = outLen;
+
+          auto* sha = new mbedtls_sha256_context();
+          mbedtls_sha256_init(sha);
+          mbedtls_sha256_starts(sha, 0);
+          otaShaCtx_ = sha;
 
           if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
             otaError_ = true;
@@ -624,15 +671,55 @@ void ApiServer::registerRoutes_() {
               upload.currentSize) {
             otaError_ = true;
             otaErrorMsg_ = "write_failed";
+          } else if (otaShaCtx_) {
+            mbedtls_sha256_update(
+                static_cast<mbedtls_sha256_context*>(otaShaCtx_),
+                upload.buf, upload.currentSize);
           }
         } else if (upload.status == UPLOAD_FILE_END && otaAuthOk_) {
           if (upload.totalSize < kOtaMinBytes) {
             otaError_ = true;
             otaErrorMsg_ = "image_too_small";
             Update.abort();
-          } else if (!Update.end(true)) {
+          } else if (!otaShaCtx_) {
             otaError_ = true;
-            otaErrorMsg_ = "update_end_failed";
+            otaErrorMsg_ = "hash_state_lost";
+            Update.abort();
+          } else {
+            uint8_t digest[32] = {0};
+            mbedtls_sha256_finish(
+                static_cast<mbedtls_sha256_context*>(otaShaCtx_), digest);
+            mbedtls_sha256_free(
+                static_cast<mbedtls_sha256_context*>(otaShaCtx_));
+            delete static_cast<mbedtls_sha256_context*>(otaShaCtx_);
+            otaShaCtx_ = nullptr;
+
+            // Parse embedded SubjectPublicKeyInfo DER once and verify.
+            mbedtls_pk_context pk;
+            mbedtls_pk_init(&pk);
+            int rcPk = mbedtls_pk_parse_public_key(
+                &pk, kSigningPublicKeyDer, kSigningPublicKeyDerLen);
+            int rcVerify = -1;
+            if (rcPk == 0) {
+              rcVerify = mbedtls_pk_verify(
+                  &pk, MBEDTLS_MD_SHA256,
+                  digest, sizeof(digest),
+                  otaSignature_, otaSignatureLen_);
+            }
+            mbedtls_pk_free(&pk);
+
+            if (rcPk != 0) {
+              otaError_ = true;
+              otaErrorMsg_ = "pubkey_parse_failed";
+              Update.abort();
+            } else if (rcVerify != 0) {
+              otaError_ = true;
+              otaErrorMsg_ = "signature_invalid";
+              Update.abort();
+            } else if (!Update.end(true)) {
+              otaError_ = true;
+              otaErrorMsg_ = "update_end_failed";
+            }
           }
         }
       });

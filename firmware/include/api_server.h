@@ -72,6 +72,16 @@ class ApiServer {
   bool otaAuthOk_;
   bool otaError_;
   String otaErrorMsg_;
+  // Decoded RSA-2048 signature received in the X-Firmware-Signature
+  // header at upload start. The OTA endpoint refuses the upload if it
+  // is missing, malformed, or doesn't verify against the computed
+  // SHA-256 of the streamed bytes.
+  uint8_t otaSignature_[256];
+  size_t otaSignatureLen_;
+  // Incremental SHA-256 of everything the client has streamed so far.
+  // Opaque pointer to a heap-allocated mbedtls_sha256_context so this
+  // header doesn't have to pull in mbedtls.
+  void* otaShaCtx_;
 
   std::function<void(BusyStatus)> onStateChanged_;
 

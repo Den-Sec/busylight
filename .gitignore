@@ -4,6 +4,10 @@ firmware/.pio-build.log
 firmware/.vscode/
 .venv-pio/
 
+# OTA signing — NEVER commit the private key.
+firmware/scripts/private_key.pem
+firmware/scripts/*.pem.bak
+
 # Windows setup artifacts
 windows_setup/.venv/
 windows_setup/build/
