@@ -19,8 +19,8 @@
 
 namespace {
 
-constexpr int kRedPin = 4;
-constexpr int kGreenPin = 5;
+constexpr int kRedPin = 6;
+constexpr int kGreenPin = 23;
 
 constexpr unsigned int kMaxStaFailuresBeforeAp = 3;
 constexpr unsigned long kStateDebounceMs = 60UL * 1000UL;
