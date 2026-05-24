@@ -7,11 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-05-24
+
 ### Added
+- Auto-update via GitHub releases: the tray app checks every 4 hours, notifies when a new version is available, and can download + replace + relaunch itself in one click. Repo is now public (no token required).
 - Offline mode for the presence helper: when the BusyLight is plugged into the same machine, the helper talks to it over USB serial as the primary transport and falls back to HTTP only if no compatible USB port is found.
 - Firmware runtime serial commands: `{"cmd":"set_state","state":0..5}`, `{"cmd":"get_state"}`, `{"cmd":"get_info"}` (host / fw / wifi / IP).
 - Tray icon shows a small white badge when running over USB so it's obvious at a glance which channel is active.
 - Distributable single-file Windows executables: `BusyLightSetup.exe` and `BusyLightPresence.exe` (no Python required on the end-user machine).
+
+## [0.3.0] - 2026-05-23
+
+### Added
 - Autonomous `ready` beacon from firmware after USB CDC enumeration so wizard handshake never relies on a bare ping.
 - AP captive portal fallback (`BusyLight-XXXX-Setup`) when WiFi credentials fail 3 times in a row.
 - Factory reset over USB (`{"cmd":"factory_reset","confirm":"YES"}`) and over Web API (`POST /api/device/factory_reset` with `X-Confirm: YES`).
