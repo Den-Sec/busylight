@@ -1,4 +1,8 @@
-$ErrorActionPreference = "Stop"
+# pip and pyinstaller both write progress to stderr; with the default
+# $ErrorActionPreference="Stop" PowerShell aborts the script before the
+# build step ever runs. Keep it on "Continue" for the whole script and
+# check exit codes / output paths explicitly at the end.
+$ErrorActionPreference = "Continue"
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
 
@@ -6,8 +10,12 @@ if (-not (Test-Path ".venv")) {
   py -3 -m venv .venv
 }
 
-& .\.venv\Scripts\python.exe -m pip install --upgrade pip
-& .\.venv\Scripts\python.exe -m pip install -r requirements.txt pyinstaller
+& .\.venv\Scripts\python.exe -m pip install --upgrade pip 2>&1 | ForEach-Object { "$_" }
+& .\.venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt pyinstaller 2>&1 | ForEach-Object { "$_" }
+
+if (-not (Test-Path ".\.venv\Scripts\pyinstaller.exe")) {
+  throw "pip install did not produce .venv\Scripts\pyinstaller.exe"
+}
 
 if (-not $env:TCL_LIBRARY -or -not $env:TK_LIBRARY) {
   $candidates = @()
@@ -35,6 +43,15 @@ if ($env:TCL_LIBRARY -and $env:TK_LIBRARY) {
   Write-Host "Using TK_LIBRARY=$env:TK_LIBRARY"
 }
 
-& .\.venv\Scripts\pyinstaller.exe --onefile --noconsole --name BusyLightSetup src\busylight_setup\main.py
+& .\.venv\Scripts\pyinstaller.exe `
+  --onefile `
+  --noconsole `
+  --name BusyLightSetup `
+  --collect-data customtkinter `
+  src\busylight_setup\main.py 2>&1 | ForEach-Object { "$_" }
 
-Write-Host "Built executable in dist\\BusyLightSetup.exe"
+if (-not (Test-Path "dist\BusyLightSetup.exe")) {
+  throw "PyInstaller did not produce dist\BusyLightSetup.exe"
+}
+
+Write-Host "Built executable in dist\BusyLightSetup.exe"

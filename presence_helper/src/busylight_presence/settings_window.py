@@ -27,11 +27,18 @@ class SettingsWindow:
         self._root: tk.Tk | None = None
 
     def open(self) -> None:
-        if self._root is not None and self._root.winfo_exists():
-            self._root.deiconify()
-            self._root.lift()
-            self._root.focus_force()
-            return
+        # Tkinter is not thread-safe: must run on the same thread that
+        # created the Tk root. pystray invokes menu callbacks on its
+        # main thread on Windows, which is where we end up, so a
+        # blocking `mainloop()` here is fine — the tray menu just
+        # waits until the user closes the settings window.
+        if self._root is not None:
+            try:
+                if self._root.winfo_exists():
+                    self._root.destroy()
+            except tk.TclError:
+                pass
+            self._root = None
 
         root = tk.Tk()
         root.title("BusyLight Presence — Settings")
@@ -107,27 +114,40 @@ class SettingsWindow:
             self.on_save(new_cfg)
             self.cfg = new_cfg
             msg_var.set("Saved.")
-            root.after(700, root.withdraw)
+            # Auto-close (and let mainloop return to the tray) shortly
+            # after, giving the user a beat to see the "Saved." flash.
+            root.after(600, root.destroy)
 
-        ttk.Button(btn_row, text="Cancel", command=root.withdraw).pack(
+        def _cancel() -> None:
+            try:
+                root.destroy()
+            except tk.TclError:
+                pass
+
+        ttk.Button(btn_row, text="Cancel", command=_cancel).pack(
             side="right", padx=(8, 0)
         )
         ttk.Button(btn_row, text="Save", command=do_save).pack(side="right")
 
-        # Closing the X just hides the window so the helper keeps running.
-        root.protocol("WM_DELETE_WINDOW", root.withdraw)
-        self._root = root
-
-    def pump(self) -> None:
-        """Process pending Tk events. Call from the main loop."""
-        if self._root is not None and self._root.winfo_exists():
+        # Closing the X destroys the window (mainloop exits), but the
+        # helper as a whole keeps running because pystray owns the
+        # process lifecycle.
+        def _on_close() -> None:
             try:
-                self._root.update()
+                root.destroy()
             except tk.TclError:
-                self._root = None
+                pass
+
+        root.protocol("WM_DELETE_WINDOW", _on_close)
+        # Also exit the mainloop on save (we already withdraw in
+        # do_save's `after`; calling destroy here as well keeps the
+        # Toplevel from leaking event handlers).
+        self._root = root
+        root.mainloop()
+        self._root = None
 
     def close(self) -> None:
-        if self._root is not None and self._root.winfo_exists():
+        if self._root is not None:
             try:
                 self._root.destroy()
             except tk.TclError:

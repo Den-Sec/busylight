@@ -11,9 +11,10 @@ Wraps a `PresenceLoop` (from main.py) in a pystray application:
 
 The polling loop runs on a background thread; pystray owns the main
 thread because it has to pump native Windows messages there. The
-Tkinter settings window is opened from the tray thread but its event
-loop runs alongside via `SettingsWindow.pump()` driven by a tray
-timer.
+Tkinter settings window is opened from a pystray menu callback and
+runs its own blocking `mainloop()` until the user closes it - Tk
+must own the main thread on macOS/Linux, and on Windows pystray
+invokes menu callbacks on the main thread anyway.
 """
 
 from __future__ import annotations
@@ -87,6 +88,9 @@ class TrayApp:
     # Worker thread
     # ------------------------------------------------------------------
     def _poll_forever(self) -> None:
+        # Important: do NOT touch Tk from this worker thread. Tkinter
+        # is not thread-safe and the settings window runs on the main
+        # thread via its own mainloop when opened.
         while not self._stop_event.is_set():
             if not self._paused:
                 try:
@@ -94,12 +98,6 @@ class TrayApp:
                 except Exception as e:  # noqa: BLE001
                     log.exception("tick error: %s", e)
             self._refresh_icon()
-            # Also pump the Tk settings window from the worker so it
-            # stays responsive without needing its own mainloop.
-            try:
-                self._settings.pump()
-            except Exception:  # noqa: BLE001
-                pass
             time.sleep(self._loop.cfg.poll_seconds)
 
     def _refresh_icon(self) -> None:
