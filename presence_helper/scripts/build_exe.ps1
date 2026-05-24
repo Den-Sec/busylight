@@ -19,12 +19,20 @@ if (-not (Test-Path ".\.venv\Scripts\pyinstaller.exe")) {
 
 # --noconsole: the helper is a tray app, the user never needs a console
 # window. Logs still go to stdout when launched from a terminal.
+#
+# Build via scripts\_entry.py (absolute imports) instead of pointing at
+# busylight_presence/main.py directly — when PyInstaller --onefile runs
+# a module file as __main__, relative imports (`from . import ...`)
+# break. The entry shim sidesteps that by importing the package by
+# name; --paths makes the package discoverable.
 & .\.venv\Scripts\pyinstaller.exe `
   --onefile `
   --noconsole `
   --name BusyLightPresence `
+  --paths src `
   --collect-data pystray `
-  src\busylight_presence\main.py 2>&1 | ForEach-Object { "$_" }
+  --collect-submodules serial `
+  scripts\_entry.py 2>&1 | ForEach-Object { "$_" }
 
 if (-not (Test-Path "dist\BusyLightPresence.exe")) {
   throw "PyInstaller did not produce dist\BusyLightPresence.exe"

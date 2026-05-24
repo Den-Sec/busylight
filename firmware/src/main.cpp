@@ -366,6 +366,46 @@ void handleSerialProvisioning() {
     handleSerialSetConfig(in);
     return;
   }
+  if (cmd == "set_state") {
+    // Runtime command, no auth: USB cable already implies physical
+    // access. Accepts an int 0..5 matching BusyStatus.
+    if (!in["state"].is<int>()) {
+      emitJson("{\"ok\":false,\"error\":\"state_missing\"}");
+      return;
+    }
+    int raw = in["state"].as<int>();
+    if (raw < 0 || raw > STATUS_OFF) {
+      emitJson("{\"ok\":false,\"error\":\"state_out_of_range\"}");
+      return;
+    }
+    BusyStatus st = static_cast<BusyStatus>(raw);
+    gApi.applyState(st);
+    char buf[64];
+    snprintf(buf, sizeof(buf),
+             "{\"ok\":true,\"event\":\"state_set\",\"state\":%d}", raw);
+    emitJson(buf);
+    return;
+  }
+  if (cmd == "get_state") {
+    char buf[64];
+    snprintf(buf, sizeof(buf),
+             "{\"ok\":true,\"event\":\"state\",\"state\":%d}",
+             static_cast<int>(gConfig.lastState));
+    emitJson(buf);
+    return;
+  }
+  if (cmd == "get_info") {
+    char buf[192];
+    String ip = WiFi.isConnected() ? WiFi.localIP().toString() : String("");
+    snprintf(buf, sizeof(buf),
+             "{\"ok\":true,\"event\":\"info\",\"host\":\"%s\","
+             "\"fw\":\"%s\",\"state\":%d,\"wifi\":%s,\"ip\":\"%s\"}",
+             gDeviceHostname.c_str(), BUSYLIGHT_VERSION,
+             static_cast<int>(gConfig.lastState),
+             WiFi.isConnected() ? "true" : "false", ip.c_str());
+    emitJson(buf);
+    return;
+  }
 
   emitJson("{\"ok\":false,\"error\":\"unknown_cmd\"}");
 }

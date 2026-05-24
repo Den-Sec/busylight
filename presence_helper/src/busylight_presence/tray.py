@@ -50,6 +50,7 @@ class TrayApp:
         self._tick_thread: threading.Thread | None = None
         self._stop_event = threading.Event()
         self._current_status_name = "disconnected"
+        self._current_via_usb = False
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -114,15 +115,21 @@ class TrayApp:
         else:
             target = "idle"
 
-        if target != self._current_status_name:
+        via_usb = getattr(self._loop.client, "current_mode", None) == "serial"
+
+        if (
+            target != self._current_status_name
+            or via_usb != self._current_via_usb
+        ):
             self._current_status_name = target
+            self._current_via_usb = via_usb
             try:
-                self._icon.icon = status_icon(target)
-                self._icon.title = self._title_for(target)
+                self._icon.icon = status_icon(target, via_usb=via_usb)
+                self._icon.title = self._title_for(target, via_usb=via_usb)
             except Exception:  # noqa: BLE001
                 pass
 
-    def _title_for(self, status: str) -> str:
+    def _title_for(self, status: str, via_usb: bool = False) -> str:
         mapping = {
             "idle": "BusyLight: available",
             "in_call": "BusyLight: in a call",
@@ -131,7 +138,10 @@ class TrayApp:
             "disconnected":
                 "BusyLight Presence: cannot reach the device",
         }
-        return mapping.get(status, "BusyLight Presence")
+        title = mapping.get(status, "BusyLight Presence")
+        if via_usb and status != "disconnected" and status != "warning":
+            title = f"{title} (via USB)"
+        return title
 
     # ------------------------------------------------------------------
     # Menu callbacks

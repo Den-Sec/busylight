@@ -24,11 +24,11 @@ from pathlib import Path
 from . import __version__
 from .client import (
     BusyLightAuthError,
-    BusyLightClient,
     BusyLightNetworkError,
 )
 from .config import PresenceConfig, load_config
 from .mic_monitor import microphone_in_use, supported_platform
+from .transport import BusyLightTransport
 
 log = logging.getLogger("busylight_presence")
 
@@ -98,7 +98,7 @@ class PresenceLoop:
     """Stateless apart from the manual-state baseline; safe to drive from
     a console while() or a worker thread under pystray."""
 
-    def __init__(self, cfg: PresenceConfig, client: BusyLightClient) -> None:
+    def __init__(self, cfg: PresenceConfig, client: BusyLightTransport) -> None:
         self.cfg = cfg
         self.client = client
         self.running = True
@@ -114,7 +114,7 @@ class PresenceLoop:
     def update_config(self, cfg: PresenceConfig) -> None:
         """Apply a new config (host or PIN may have changed)."""
         if cfg.host != self.cfg.host or cfg.pin != self.cfg.pin:
-            self.client = BusyLightClient(host=cfg.host, pin=cfg.pin)
+            self.client = BusyLightTransport(host=cfg.host, pin=cfg.pin)
             try:
                 self.client.login()
             except (BusyLightAuthError, BusyLightNetworkError) as e:
@@ -306,12 +306,12 @@ def main(argv: list[str] | None = None) -> int:
         if not args.no_tray:
             # Build a stub loop with no client and let the tray app open
             # the settings window.
-            stub_client = BusyLightClient(host=cfg.host or "x", pin=cfg.pin or "0000")
+            stub_client = BusyLightTransport(host=cfg.host or "x", pin=cfg.pin or "0000")
             loop = PresenceLoop(cfg, stub_client)
             return _run_tray(loop)
         return 2
 
-    client = BusyLightClient(host=cfg.host, pin=cfg.pin)
+    client = BusyLightTransport(host=cfg.host, pin=cfg.pin)
     try:
         client.login()
     except BusyLightAuthError as e:

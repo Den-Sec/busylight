@@ -1,8 +1,10 @@
 # BusyLight Presence runtime dependencies.
 #
 # Core helper relies only on CPython stdlib (winreg, urllib,
-# http.cookiejar, configparser). The optional tray-app shell adds
-# pystray + Pillow so users get a system-tray icon and a settings
-# window instead of a console. Both are pure-Python wheels on PyPI.
+# http.cookiejar, configparser) plus pyserial for the offline USB
+# transport. The optional tray-app shell adds pystray + Pillow so
+# users get a system-tray icon and a settings window instead of a
+# console. All wheels are pure-Python on PyPI.
 pystray>=0.19
 Pillow>=10.0
+pyserial>=3.5

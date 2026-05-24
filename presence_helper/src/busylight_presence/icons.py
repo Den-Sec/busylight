@@ -22,7 +22,13 @@ _PALETTES = {
 }
 
 
-def status_icon(name: str) -> Image.Image:
+def status_icon(name: str, via_usb: bool = False) -> Image.Image:
+    """Render the tray icon.
+
+    `via_usb=True` adds a small white badge in the bottom-right corner
+    so the user can tell at a glance whether the helper is talking to
+    the device over USB (no Wi-Fi dependency) or over the network.
+    """
     centre, edge, halo = _PALETTES.get(name, _PALETTES["disconnected"])
     base = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
 
@@ -44,5 +50,16 @@ def status_icon(name: str) -> Image.Image:
     hdraw.ellipse((20, 18, 34, 26), fill=(255, 255, 255, 150))
     hl = hl.filter(ImageFilter.GaussianBlur(1.5))
     base = Image.alpha_composite(base, hl)
+
+    if via_usb:
+        # Small white circle with a thin dark outline in the bottom-right
+        # quadrant — reads clearly at 16x16 without overwhelming the LED.
+        badge = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
+        bdraw = ImageDraw.Draw(badge)
+        # Outline first (slightly larger ellipse in dark)…
+        bdraw.ellipse((42, 42, 60, 60), fill=(30, 30, 30, 255))
+        # …then white core on top.
+        bdraw.ellipse((44, 44, 58, 58), fill=(255, 255, 255, 255))
+        base = Image.alpha_composite(base, badge)
 
     return base
