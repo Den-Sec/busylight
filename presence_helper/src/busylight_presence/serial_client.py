@@ -57,11 +57,22 @@ STATE_INT_TO_NAME = {v: k for k, v in STATE_NAME_TO_INT.items()}
 # `event:` value the firmware logs autonomously in main.cpp.
 ASYNC_BEACONS: frozenset[str] = frozenset(
     {
+        # boot / network
         "ready",
         "server_started",
         "ap_portal_started",
+        "ap_portal_timeout",
         "wifi_retry",
+        "wifi_lost",
+        "wifi_reconnect",
+        "ntp_synced",
+        # storage / config
         "littlefs_fail",
+        "config_saved",
+        "factory_reset_ok",
+        # OTA progress events that aren't the final reply
+        "ota_finalizing",
+        "ota_progress",
     }
 )
 
@@ -160,6 +171,171 @@ class SerialClient:
         """Optional helper — returns whatever the firmware reports
         about itself (hostname, fw version, wifi up/down, IP)."""
         return self._roundtrip({"cmd": "get_info"})
+
+    # ------------------------------------------------------------------
+    # OTA over serial — see firmware/include/ota_serial.h for protocol.
+    # ------------------------------------------------------------------
+    def update_firmware(
+        self,
+        bin_path: "Path",
+        sig_path: "Path",
+        progress_cb=None,
+    ) -> None:
+        """Stream a signed firmware image to the device over USB.
+
+        `bin_path` must point at a .bin built from PlatformIO; `sig_path`
+        is the matching .sig produced by firmware/scripts/sign_firmware.py.
+
+        `progress_cb(written, total)` is called periodically so the
+        tray can update a progress indicator. Raises on protocol /
+        signature errors.
+        """
+        from pathlib import Path as _Path  # noqa: N813
+        if serial is None:
+            raise SerialUnavailable("pyserial not installed")
+
+        bin_bytes = _Path(bin_path).read_bytes()
+        sig_bytes = _Path(sig_path).read_bytes()
+        if len(sig_bytes) != 256:
+            raise SerialProtocolError(
+                f"signature must be 256 bytes, got {len(sig_bytes)}"
+            )
+
+        begin_payload = {"cmd": "ota_begin", "size": len(bin_bytes)}
+
+        # OTA needs a single long-lived connection: opening + closing
+        # for every write would reset the device on most CDC stacks.
+        try:
+            with serial.Serial(
+                self.port,
+                baudrate=self.baudrate,
+                timeout=2.0,
+                write_timeout=10.0,
+                rtscts=False,
+                dsrdtr=False,
+                xonxoff=False,
+            ) as ser:
+                try:
+                    ser.dtr = True
+                    ser.rts = False
+                except Exception:  # noqa: BLE001
+                    pass
+
+                # Drain any pre-existing beacon traffic.
+                ser.reset_input_buffer()
+                ser.write(
+                    (json.dumps(begin_payload, separators=(",", ":")) + "\n")
+                    .encode("utf-8")
+                )
+                ser.flush()
+
+                resp = self._read_json_reply(ser, timeout_s=8.0)
+                if not resp.get("ok") or resp.get("event") != "ota_awaiting_sig":
+                    raise SerialProtocolError(
+                        resp.get("error") or "device rejected ota_begin"
+                    )
+
+                # Push the 256-byte signature as raw binary. Kept out
+                # of the JSON command above to stay well within the
+                # device's USB-CDC RX buffer (~256 bytes on ESP32-C6).
+                ser.write(sig_bytes)
+                ser.flush()
+
+                resp = self._read_json_reply(ser, timeout_s=8.0)
+                if not resp.get("ok") or resp.get("event") != "ota_ready":
+                    raise SerialProtocolError(
+                        resp.get("error") or "device rejected signature"
+                    )
+
+                # Stream the image. 4 KB chunks keep both the host
+                # write buffer and the device's Serial RX queue
+                # comfortable.
+                #
+                # Crucially, we also drain whatever the device has
+                # queued to us between chunks: the device emits async
+                # beacons (`ota_progress`, `wifi_retry`, `ntp_synced`)
+                # during the stream, and its USB-CDC TX ring is only
+                # a few hundred bytes. If we never read, those beacons
+                # fill the ring and `Serial.flush()` on the device
+                # side eventually blocks — at which point our final
+                # `ota_complete` ack is never queued.
+                total = len(bin_bytes)
+                written = 0
+                CHUNK = 4096
+                # `readline()` with a tight timeout between chunks is
+                # what gives the device room to breathe: a 50 ms USB
+                # poll pause lets the device run its main loop ~50
+                # times so it can emit `ota_progress` beacons, run
+                # `Serial.flush()` cleanly, and never pile up its
+                # 256-byte TX ring. Faster patterns (no pause /
+                # `in_waiting` only / drain every N chunks) all end
+                # up dropping the final `ota_complete` ack.
+                old_to = ser.timeout
+                ser.timeout = 0.05
+                try:
+                    while written < total:
+                        end = min(written + CHUNK, total)
+                        n = ser.write(bin_bytes[written:end])
+                        if n is not None and n != (end - written):
+                            raise SerialProtocolError(
+                                "short write to device"
+                            )
+                        ser.flush()
+                        written = end
+                        # Drain whatever the device emitted while we
+                        # were writing — we discard it (we don't need
+                        # progress beacons; we drive progress from
+                        # the host side via `progress_cb`).
+                        while True:
+                            line = ser.readline()
+                            if not line:
+                                break
+                        if progress_cb:
+                            try:
+                                progress_cb(written, total)
+                            except Exception:  # noqa: BLE001
+                                pass
+                finally:
+                    ser.timeout = old_to
+
+                # Wait for the auto-finalize reply. The device may also
+                # emit one more `wifi_retry` beacon while it commits; the
+                # JSON reader skips those.
+                final = self._read_json_reply(ser, timeout_s=20.0)
+                if not final.get("ok"):
+                    raise SerialProtocolError(
+                        final.get("error") or "ota_finalize failed"
+                    )
+                if final.get("event") != "ota_complete":
+                    raise SerialProtocolError(
+                        f"unexpected reply: {final}"
+                    )
+        except serial.SerialException as e:
+            raise SerialUnavailable(str(e)) from e
+        except OSError as e:
+            raise SerialUnavailable(str(e)) from e
+
+    @staticmethod
+    def _read_json_reply(ser, timeout_s: float) -> dict:
+        """Read one JSON line from `ser`, skipping known async beacons.
+
+        Uses a manual deadline so a single readline doesn't eat the
+        whole budget — we may need to skip up to a few beacon lines
+        before the real reply arrives.
+        """
+        end = time.monotonic() + timeout_s
+        while time.monotonic() < end:
+            raw = ser.readline().decode("utf-8", errors="replace").strip()
+            if not raw:
+                continue
+            try:
+                obj = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            if obj.get("event") in ASYNC_BEACONS:
+                continue
+            return obj
+        raise SerialProtocolError("no JSON reply within timeout")
 
     # ------------------------------------------------------------------
     # Internals

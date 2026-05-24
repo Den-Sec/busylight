@@ -12,6 +12,7 @@ from tkinter import messagebox, ttk
 from typing import Callable
 
 from .config import PresenceConfig
+from .serial_client import find_busylight_ports
 
 
 class SettingsWindow:
@@ -42,7 +43,7 @@ class SettingsWindow:
 
         root = tk.Tk()
         root.title("BusyLight Presence — Settings")
-        root.geometry("420x320")
+        root.geometry("440x400")
         root.resizable(False, False)
         try:
             # Use the system default theme tweaks for a less Tk-1990 look.
@@ -65,7 +66,31 @@ class SettingsWindow:
                 "using the microphone."
             ),
             foreground="#555",
-            wraplength=380,
+            wraplength=400,
+            justify="left",
+        ).pack(anchor="w", pady=(0, 10))
+
+        # Live USB detection banner: tells the user whether they need
+        # to fill in host/PIN at all.
+        usb_ports = find_busylight_ports()
+        if usb_ports:
+            banner_text = (
+                f"Device detected over USB ({usb_ports[0]}). "
+                "Wi-Fi settings below are optional."
+            )
+            banner_fg = "#16744a"  # readable green
+        else:
+            banner_text = (
+                "No USB device detected. Fill in Wi-Fi host + PIN "
+                "below, or plug in the cable."
+            )
+            banner_fg = "#a35a00"  # amber
+
+        ttk.Label(
+            outer,
+            text=banner_text,
+            foreground=banner_fg,
+            wraplength=400,
             justify="left",
         ).pack(anchor="w", pady=(0, 14))
 
@@ -79,8 +104,8 @@ class SettingsWindow:
             entry.pack(fill="x", pady=(2, 10))
             return entry
 
-        add_row("BusyLight host (mDNS or IP)", host_var)
-        add_row("Access PIN", pin_var, show="•")
+        add_row("BusyLight host (mDNS or IP) — optional", host_var)
+        add_row("Access PIN — optional", pin_var, show="•")
         add_row("Poll interval (seconds)", poll_var)
 
         msg_var = tk.StringVar(value="")

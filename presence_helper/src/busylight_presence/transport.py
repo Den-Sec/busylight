@@ -76,7 +76,14 @@ class BusyLightTransport:
                 log.info("serial probe failed (%s); trying HTTP", e)
                 self._serial = None
 
-        # Fallback: HTTP
+        # Fallback: HTTP. If the user never configured a host/PIN (USB-
+        # only setup), we can't fall back — surface a clean error so
+        # the tray shows "disconnected" instead of throwing.
+        if not self.host or not self.pin:
+            self._last_mode = None
+            raise BusyLightNetworkError(
+                "no USB device found and no Wi-Fi host/PIN configured"
+            )
         self._http.login()
         self._http_authed = True
         self._last_mode = "http"
@@ -155,6 +162,13 @@ class BusyLightTransport:
         self._last_serial_scan = 0.0
 
     def _http_set_state(self, state: str) -> None:
+        if not self.host or not self.pin:
+            # USB-only setup; no HTTP fallback possible. Stay silent
+            # so the tray just shows disconnected instead of erroring.
+            self._last_mode = None
+            raise BusyLightNetworkError(
+                "no USB device found and no Wi-Fi host/PIN configured"
+            )
         if not self._http_authed:
             self._http.login()
             self._http_authed = True
@@ -167,6 +181,9 @@ class BusyLightTransport:
         self._last_mode = "http"
 
     def _http_get_state(self) -> Optional[str]:
+        if not self.host or not self.pin:
+            self._last_mode = None
+            return None
         if not self._http_authed:
             try:
                 self._http.login()

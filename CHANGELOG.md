@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-05-25
+
+### Added
+- Firmware OTA over USB serial: the presence helper can push a signed `.bin` to the device entirely over the cable (no Wi-Fi required), using the same RSA-2048 / SHA-256 signature check as the HTTP OTA endpoint.
+- USB-only setup: host + PIN are now optional in the presence helper. With the cable plugged in the helper authenticates the device implicitly over USB; you don't have to fill in any Wi-Fi info to use it.
+- Settings window shows a live banner: green "Device detected over USB" or amber "No USB device detected" so it's obvious whether you need to type anything.
+
+### Fixed
+- OTA reliability: the device used to drop the final `ota_complete` ack when async beacons (`wifi_retry`, `ntp_synced`, ...) ate the USB-CDC TX ring while the host was streaming. Background beacons are now suppressed while OTA is active, and the host drains the device between chunks.
+
 ## [0.3.1] - 2026-05-24
 
 ### Added

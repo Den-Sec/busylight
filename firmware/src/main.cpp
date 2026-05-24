@@ -7,6 +7,7 @@
 
 #include "ap_portal.h"
 #include "api_server.h"
+#include "ota_serial.h"
 #include "auth.h"
 #include "config_store.h"
 #include "hostname.h"
@@ -335,6 +336,105 @@ void handleSerialSetConfig(JsonDocument& in) {
 }
 
 void handleSerialProvisioning() {
+  // Signature collection: 256 raw bytes after ota_begin acknowledged.
+  if (ota_serial::isAwaitingSignature()) {
+    if (!Serial.available()) return;
+    uint8_t buf[256];
+    uint32_t remaining = ota_serial::signatureBytesRemaining();
+    int toRead = Serial.available();
+    if (toRead > static_cast<int>(sizeof(buf))) {
+      toRead = sizeof(buf);
+    }
+    if (toRead > static_cast<int>(remaining)) {
+      toRead = remaining;
+    }
+    int n = Serial.readBytes(buf, toRead);
+    if (n <= 0) return;
+    String err;
+    size_t got = ota_serial::writeSignatureChunk(buf, n, err);
+    if (got == 0 || got != static_cast<size_t>(n)) {
+      char msg[128];
+      snprintf(msg, sizeof(msg),
+               "{\"ok\":false,\"event\":\"ota_error\",\"error\":\"%s\"}",
+               err.c_str());
+      emitJson(msg);
+      return;
+    }
+    // Signature phase done — entering streaming. ack the host so it
+    // knows it can start pushing image bytes.
+    if (ota_serial::isStreaming()) {
+      emitJson("{\"ok\":true,\"event\":\"ota_ready\"}");
+    }
+    return;
+  }
+
+  // Image streaming mode: every byte read here is image payload, not
+  // JSON. Pipe it straight into the OTA buffer and auto-finalize
+  // when we hit the announced size.
+  if (ota_serial::isStreaming()) {
+    if (!Serial.available()) return;
+    uint8_t buf[2048];
+    uint32_t remaining = ota_serial::bytesRemaining();
+    int toRead = Serial.available();
+    if (toRead > static_cast<int>(sizeof(buf))) {
+      toRead = sizeof(buf);
+    }
+    if (toRead > static_cast<int>(remaining)) {
+      toRead = remaining;
+    }
+    int n = Serial.readBytes(buf, toRead);
+    if (n <= 0) return;
+    String err;
+    if (ota_serial::writeChunk(buf, n, err) != static_cast<size_t>(n)) {
+      char msg[128];
+      snprintf(msg, sizeof(msg),
+               "{\"ok\":false,\"event\":\"ota_error\",\"error\":\"%s\"}",
+               err.c_str());
+      emitJson(msg);
+      return;
+    }
+    // Diagnostic breadcrumb every ~128 KB so the host (and a human
+    // tailing the port) can see the stream is making progress.
+    static uint32_t lastReportedBytes = 0;
+    uint32_t received = ota_serial::bytesReceived();
+    if (received - lastReportedBytes >= 128 * 1024 ||
+        ota_serial::bytesRemaining() == 0) {
+      lastReportedBytes = received;
+      char dbg[80];
+      snprintf(dbg, sizeof(dbg),
+               "{\"ok\":true,\"event\":\"ota_progress\",\"bytes\":%u}",
+               static_cast<unsigned>(received));
+      Serial.println(dbg);
+    }
+    if (ota_serial::bytesRemaining() == 0) {
+      // Tell the host we got the last byte, before we start the
+      // signature verification + Update.end work which can take a
+      // few seconds (and during which we can't write more JSON).
+      emitJson("{\"ok\":true,\"event\":\"ota_finalizing\"}");
+      Serial.flush();
+      String ferr;
+      if (ota_serial::finalize(ferr)) {
+        emitJson("{\"ok\":true,\"event\":\"ota_complete\"}");
+        // ESP.restart() tears down the USB-CDC peripheral, which
+        // truncates anything still queued for transmission. Give the
+        // host a comfortable window to drain the ack before we kill
+        // the link — 1.5 s is well above the typical pyserial poll
+        // cadence and short enough that the user doesn't notice it.
+        Serial.flush();
+        delay(1500);
+        ESP.restart();
+      } else {
+        char msg[128];
+        snprintf(msg, sizeof(msg),
+                 "{\"ok\":false,\"event\":\"ota_error\",\"error\":\"%s\"}",
+                 ferr.c_str());
+        emitJson(msg);
+        Serial.flush();
+      }
+    }
+    return;
+  }
+
   if (!Serial.available()) return;
 
   String line = Serial.readStringUntil('\n');
@@ -394,6 +494,29 @@ void handleSerialProvisioning() {
     emitJson(buf);
     return;
   }
+  if (cmd == "ota_begin") {
+    if (!in["size"].is<int>() && !in["size"].is<uint32_t>()) {
+      emitJson("{\"ok\":false,\"error\":\"size_missing\"}");
+      return;
+    }
+    uint32_t size = in["size"].as<uint32_t>();
+    String err;
+    if (ota_serial::begin(size, err)) {
+      // Caller must now send 256 raw signature bytes.
+      emitJson("{\"ok\":true,\"event\":\"ota_awaiting_sig\"}");
+    } else {
+      char buf[128];
+      snprintf(buf, sizeof(buf),
+               "{\"ok\":false,\"error\":\"%s\"}", err.c_str());
+      emitJson(buf);
+    }
+    return;
+  }
+  if (cmd == "ota_abort") {
+    ota_serial::reset();
+    emitJson("{\"ok\":true,\"event\":\"ota_aborted\"}");
+    return;
+  }
   if (cmd == "get_info") {
     char buf[192];
     String ip = WiFi.isConnected() ? WiFi.localIP().toString() : String("");
@@ -436,6 +559,11 @@ void handlePendingDeviceActions() {
 
 #ifndef UNIT_TEST
 void setup() {
+  // Grow the USB-CDC RX buffer before begin() so OTA streaming
+  // doesn't drop bytes when the host writes 4 KB chunks. Default is
+  // 256 B on ESP32-C6 native USB — fine for JSON commands, not for
+  // a megabyte of firmware image.
+  Serial.setRxBufferSize(8192);
   Serial.begin(115200);
 
   // Wait for USB CDC host enumeration. On ESP32-C6 with native USB CDC,
@@ -479,6 +607,18 @@ void setup() {
 
 void loop() {
   handleSerialProvisioning();
+
+  // While an OTA session is in flight, every async beacon we'd emit
+  // (wifi_retry, ntp_synced, server_started, ...) competes for the
+  // USB-CDC TX ring that the host needs to receive the final
+  // `ota_complete` ack. Skip all background work until OTA finishes
+  // or aborts — the device is dedicated to the upload for those few
+  // seconds anyway.
+  if (ota_serial::isActive()) {
+    gLed.tick(millis());
+    delay(1);
+    return;
+  }
 
   // API handlers may have edited the saved Wi-Fi list; rebuild the
   // WiFiMulti AP table once per change rather than on every connect

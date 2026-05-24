@@ -47,17 +47,18 @@ class PresenceConfig:
     config_path: Path | None = None
 
     def ensure_valid(self) -> None:
-        if not self.host:
-            raise ValueError(
-                "BusyLight host is required (set BUSYLIGHT_HOST or "
-                "edit the config file)"
-            )
-        if not self.pin or not self.pin.isdigit():
-            raise ValueError(
-                "BusyLight PIN must be set and contain only digits (4-8)"
-            )
-        if not (1 <= len(self.pin) <= 8):
-            raise ValueError("PIN must be 4-8 digits")
+        # host + PIN are optional: when the device is wired to this PC
+        # the transport reaches it over USB serial without either of
+        # them. They become required only when there's no USB device
+        # present (transport handles the runtime check; this method
+        # just enforces "if a value is set, it must be plausible").
+        if self.host and " " in self.host:
+            raise ValueError("BusyLight host must not contain spaces")
+        if self.pin:
+            if not self.pin.isdigit():
+                raise ValueError("PIN must contain only digits")
+            if not (1 <= len(self.pin) <= 8):
+                raise ValueError("PIN must be 1-8 digits")
         if self.poll_seconds <= 0:
             raise ValueError("poll_seconds must be > 0")
         if self.default_state not in ("AVAILABLE", "BUSY", "AWAY", "IN_CALL"):
