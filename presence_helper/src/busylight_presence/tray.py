@@ -44,11 +44,12 @@ from .updater import (
 log = logging.getLogger("busylight_presence.tray")
 
 
-# How often the background thread looks for new releases. 4h is long
-# enough to be invisible to the user, short enough that a release
-# pushed in the morning will be picked up by evening on a workstation
-# that's been on all day.
-UPDATE_CHECK_INTERVAL_S = 4 * 60 * 60
+# How often the background thread looks for new releases. 1 hour is
+# a sane default: short enough that a release pushed an hour ago will
+# get picked up, long enough that we're not hammering the GitHub API.
+# A first check fires ~3 seconds after launch so a user who downloads
+# a slightly-stale exe gets the prompt immediately.
+UPDATE_CHECK_INTERVAL_S = 60 * 60
 
 
 class TrayApp:
@@ -72,6 +73,8 @@ class TrayApp:
         self._current_via_usb = False
         self._pending_update: Optional[LatestRelease] = None
         self._update_lock = threading.Lock()
+        self._pending_firmware_update: Optional[LatestRelease] = None
+        self._firmware_update_lock = threading.Lock()
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -82,6 +85,9 @@ class TrayApp:
                  enabled=False),
             Menu.SEPARATOR,
             Item("Open BusyLight", self._open_dashboard, default=True),
+            Item(self._firmware_update_label,
+                 self._on_firmware_update_click,
+                 enabled=lambda _i: self._pending_firmware_update is not None),
             Item("Update firmware via USB…", self._on_firmware_ota_usb),
             Item("Reflash from factory (USB)…", self._on_factory_reflash),
             Item("Settings…", self._open_settings),
@@ -249,14 +255,29 @@ class TrayApp:
             return "Up to date"
         return f"Install update {pending.tag}…"
 
+    def _firmware_update_label(self, _item) -> str:
+        with self._firmware_update_lock:
+            pending = self._pending_firmware_update
+        if pending is None:
+            return "Device firmware up to date"
+        return f"Install device firmware {pending.tag}…"
+
+    def _on_firmware_update_click(self, _icon, _item) -> None:
+        # Reuse the existing USB-OTA flow. It will auto-fall-back to
+        # factory reflash on signature_invalid (see below).
+        threading.Thread(
+            target=self._firmware_ota_via_usb, daemon=True,
+        ).start()
+
     def _update_loop(self) -> None:
-        # Small startup delay so we don't fire a network call during
-        # tray init (some users still see SmartScreen at this point).
-        if self._stop_event.wait(20.0):
+        # Short startup delay so the GitHub call doesn't fight tray
+        # init for CPU, but small enough that someone who downloads a
+        # stale exe sees the "update available" prompt right away.
+        if self._stop_event.wait(3.0):
             return
         while not self._stop_event.is_set():
             self._check_for_update()
-            # Interruptible sleep — Event.wait returns True if stopped.
+            self._check_firmware_update()
             if self._stop_event.wait(UPDATE_CHECK_INTERVAL_S):
                 return
 
@@ -287,11 +308,62 @@ class TrayApp:
                 )
 
     def _on_manual_check(self, _icon, _item) -> None:
-        threading.Thread(
-            target=self._check_for_update,
-            kwargs={"notify_no_update": True},
-            daemon=True,
-        ).start()
+        def _both() -> None:
+            self._check_for_update(notify_no_update=True)
+            self._check_firmware_update(notify_no_update=True)
+        threading.Thread(target=_both, daemon=True).start()
+
+    def _check_firmware_update(self, *,
+                               notify_no_update: bool = False) -> None:
+        """Ask the device its current firmware version and compare it
+        against the latest GitHub release. If the device is behind, we
+        notify and enable the dynamic menu item so the user can install
+        with one click."""
+        from .serial_client import (
+            SerialClient,
+            SerialProtocolError,
+            SerialUnavailable,
+            find_busylight_ports,
+        )
+
+        ports = find_busylight_ports()
+        if not ports:
+            # No device on USB — silently skip. The user gets prompted
+            # again on the next periodic check.
+            return
+        try:
+            info = SerialClient(port=ports[0]).get_info()
+        except (SerialUnavailable, SerialProtocolError) as e:
+            log.debug("firmware version probe failed: %s", e)
+            return
+        current_fw = info.get("fw") or ""
+
+        try:
+            latest = fetch_latest_release()
+        except Exception as e:  # noqa: BLE001
+            log.warning("release check raised: %s", e)
+            return
+        if latest is None or latest.firmware_asset is None:
+            return
+
+        if is_newer(latest.version, current_fw):
+            with self._firmware_update_lock:
+                self._pending_firmware_update = latest
+            log.info("firmware update available: %s -> %s",
+                     current_fw, latest.tag)
+            self._notify(
+                "BusyLight firmware update",
+                f"Device is on {current_fw}, {latest.tag} is available. "
+                "Click the tray icon to install over USB.",
+            )
+        else:
+            with self._firmware_update_lock:
+                self._pending_firmware_update = None
+            if notify_no_update:
+                self._notify(
+                    "BusyLight firmware",
+                    f"Device firmware is up to date ({current_fw}).",
+                )
 
     def _on_update_click(self, _icon, _item) -> None:
         with self._update_lock:
@@ -418,7 +490,22 @@ class TrayApp:
             sc = SerialClient(port=ports[0])
             sc.update_firmware(bin_path, sig_path)
         except (SerialUnavailable, SerialProtocolError) as e:
-            self._notify("BusyLight update", f"Firmware flash failed: {e}")
+            msg = str(e)
+            # signature_invalid means the device's embedded public key
+            # doesn't match the key we signed the release with — OTA
+            # cannot succeed without re-flashing. Fall back to the
+            # factory reflash path automatically so the user doesn't
+            # have to pick a different menu item.
+            if "signature_invalid" in msg:
+                self._notify(
+                    "BusyLight update",
+                    "Signature mismatch — falling back to factory "
+                    "reflash automatically…",
+                )
+                self._paused = False
+                self._factory_reflash()
+                return
+            self._notify("BusyLight update", f"Firmware flash failed: {msg}")
             return
         except Exception as e:  # noqa: BLE001
             self._notify("BusyLight update", f"Unexpected error: {e}")
@@ -428,6 +515,8 @@ class TrayApp:
 
         # 5. Device reboots into the new firmware; the tray reconnects
         #    automatically on the next poll tick.
+        with self._firmware_update_lock:
+            self._pending_firmware_update = None
         self._notify(
             "BusyLight update",
             f"Device updated to {release.tag}. Reconnecting…",
@@ -579,6 +668,8 @@ class TrayApp:
             return
 
         self._paused = False
+        with self._firmware_update_lock:
+            self._pending_firmware_update = None
         self._notify(
             "BusyLight reflash",
             f"Device re-flashed to {release.tag}. Reconnecting…",

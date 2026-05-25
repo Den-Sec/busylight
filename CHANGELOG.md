@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.11] - 2026-05-25
+
+### Changed
+- Auto-update check now fires ~3 seconds after launch (down from 20 s) and then every **1 hour** (down from 4 h). A user who downloads a slightly-stale exe sees the "Update available" prompt immediately. The periodic interval is short enough that releases pushed during a working day get picked up by the next coffee break.
+- The same background loop now also probes the device's firmware version over USB and compares it to the latest GitHub release. If the device is behind, a tray balloon notifies and a new dynamic menu item enables itself: **"Install device firmware vX.Y.Z…"**.
+
+### Added
+- One-click firmware update from the dynamic menu item: triggers the existing USB-OTA flow, and if the device rejects the signature (`signature_invalid` — old / mismatched public key embedded), **automatically falls back to factory reflash via esptool** without making the user pick a different menu item.
+
+### Why this matters now
+v0.3.5..0.3.10 ran the update check every 4 hours after a 20 s warm-up, so anyone restarting the exe (e.g. to test a new build) effectively never got a check in. Combined with the fact that the firmware update was a separate manual action, the helper kept the same firmware on the device through 5+ releases. v0.3.11 makes both updates immediate at launch and gives them a single one-click button.
+
 ## [0.3.10] - 2026-05-25
 
 ### Fixed (the actual LED bug)
