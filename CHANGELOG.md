@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.15] - 2026-05-25
+
+### Fixed
+- **"Factory reset device" from the tray failed with "no JSON reply within timeout"**: the device acks `cmd:factory_reset` with `event:factory_reset_ok` and then restarts. That event name is in our async-beacon skip list (it can also appear at boot in some recovery paths), so the standard `_roundtrip` flow filtered it out and waited indefinitely for "the real reply" that would never come. `factory_reset` now uses a dedicated fire-and-forget path: write the command, briefly look for the ack with a tight timeout, accept "device is already restarting" as a normal outcome.
+- **Web UI "Factory reset" inside the bundled dashboard returned "needs_wifi_or_dedicated_flow"**: the bridge had marked `POST /api/device/factory_reset` as a Wi-Fi-only endpoint. Now it forwards to the serial `factory_reset` cmd just like the tray menu item, so resetting from either the dashboard or the tray works identically.
+
 ## [0.3.14] - 2026-05-25
 
 ### Fixed

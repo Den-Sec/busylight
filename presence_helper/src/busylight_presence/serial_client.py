@@ -175,12 +175,70 @@ class SerialClient:
     def factory_reset(self) -> None:
         """Wipe the device NVS (PIN, saved Wi-Fi networks, schedule)
         and reboot. After this, the device boots with PIN = "1234" and
-        no saved networks — same state as a freshly-flashed unit."""
-        resp = self._roundtrip({"cmd": "factory_reset", "confirm": "YES"})
-        if not resp.get("ok"):
-            raise SerialProtocolError(
-                resp.get("error") or "factory_reset rejected"
+        no saved networks — same state as a freshly-flashed unit.
+
+        Implemented as fire-and-forget: the device acks with
+        `factory_reset_ok` (which is in our async-beacon skip list,
+        so `_roundtrip` would never return it as a reply) and then
+        immediately restarts. We just write the command, give it a
+        beat to start the reset, and trust the next ping cycle to
+        confirm the device came back up.
+        """
+        if serial is None:
+            raise SerialUnavailable("pyserial not installed")
+        line = (
+            json.dumps(
+                {"cmd": "factory_reset", "confirm": "YES"},
+                separators=(",", ":"),
             )
+            + "\n"
+        )
+        try:
+            with serial.Serial(
+                self.port,
+                baudrate=self.baudrate,
+                timeout=self.timeout_s,
+                write_timeout=self.timeout_s,
+                rtscts=False,
+                dsrdtr=False,
+                xonxoff=False,
+            ) as ser:
+                try:
+                    ser.dtr = True
+                    ser.rts = False
+                except Exception:  # noqa: BLE001
+                    pass
+                ser.reset_input_buffer()
+                ser.write(line.encode("utf-8"))
+                ser.flush()
+                # Best-effort read of the ack so we can surface a
+                # clearer error if the device rejected the command
+                # (e.g. malformed confirm token). Anything else just
+                # means the device is already restarting.
+                ser.timeout = 0.5
+                deadline = time.monotonic() + 1.0
+                while time.monotonic() < deadline:
+                    raw = ser.readline().decode("utf-8", errors="replace").strip()
+                    if not raw:
+                        continue
+                    try:
+                        obj = json.loads(raw)
+                    except json.JSONDecodeError:
+                        continue
+                    if obj.get("event") == "factory_reset_ok":
+                        return
+                    if obj.get("ok") is False:
+                        raise SerialProtocolError(
+                            obj.get("error") or "factory_reset rejected"
+                        )
+                # Timed out waiting for the explicit ack — device
+                # might already be mid-restart. That's a normal path,
+                # not an error.
+                return
+        except serial.SerialException as e:
+            raise SerialUnavailable(str(e)) from e
+        except OSError as e:
+            raise SerialUnavailable(str(e)) from e
 
     def wifi_list(self) -> dict:
         """Return the saved Wi-Fi networks list and which one is

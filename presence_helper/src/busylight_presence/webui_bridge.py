@@ -248,11 +248,27 @@ class _BridgeHandler(BaseHTTPRequestHandler):
             # Bridge users are USB-trusted; PIN doesn't gate anything
             # locally. Pretend success.
             return self._send_json(200, {"ok": True})
+        if path == "/api/device/factory_reset":
+            return self._api_post_factory_reset()
         if path in ("/api/schedule", "/api/mqtt",
-                    "/api/device/reboot", "/api/device/factory_reset",
+                    "/api/device/reboot",
                     "/api/firmware/update"):
             return self._send_json(503, {"error": "needs_wifi_or_dedicated_flow"})
         self._send_json(404, {"error": "not_found"})
+
+    def _api_post_factory_reset(self) -> None:
+        # The web UI guards this with a confirm header; the firmware
+        # also requires `confirm:"YES"` in the serial cmd body, which
+        # SerialClient.factory_reset() always passes. So we just
+        # need a USB device and we're good.
+        sc = self._serial()
+        if sc is None:
+            return self._send_json(503, {"error": "no_usb_device"})
+        try:
+            sc.factory_reset()
+        except (SerialUnavailable, SerialProtocolError) as e:
+            return self._send_json(502, {"error": str(e)})
+        self._send_json(200, {"ok": True, "rebooting": True})
 
     def _api_post_state(self) -> None:
         body = self._read_json_body()
