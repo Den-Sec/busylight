@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.9] - 2026-05-25
+
+### Fixed
+- Firmware LED: AWAY / IN_CALL / WIFI_ERROR didn't reset the red/green output flags on `setState`, so switching from BUSY to AWAY/IN_CALL kept the device looking like BUSY (red solid) for one blink interval before the new pattern kicked in. Dennis reported the worst case: the LED appeared stuck red even after the web UI confirmed the state change. Fixed by setting the correct initial outputs for every state branch and starting the blink phase in the "on" half-cycle so the new colour shows immediately.
+- Firmware version embedded in the binary was still "0.3.6" from v0.3.5 / v0.3.6 builds — every v0.3.7 / v0.3.8 firmware artifact reported `"version":"0.3.6"` in the web UI even though the GitHub release was labelled differently. Bumped to "0.3.9".
+
 ## [0.3.8] - 2026-05-25
 
 ### Added

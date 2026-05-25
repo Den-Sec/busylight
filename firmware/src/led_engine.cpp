@@ -37,15 +37,43 @@ void LedEngine::setState(BusyStatus state) {
   lastToggleMs_ = 0;
   blinkPhase_ = false;
 
-  if (state_ == STATUS_AVAILABLE) {
-    redOn_ = false;
-    greenOn_ = true;
-  } else if (state_ == STATUS_BUSY) {
-    redOn_ = true;
-    greenOn_ = false;
-  } else if (state_ == STATUS_OFF) {
-    redOn_ = false;
-    greenOn_ = false;
+  // Set initial outputs for every state. Previously only the static
+  // states (AVAILABLE/BUSY/OFF) had a branch here, which meant the
+  // blinking states (AWAY/IN_CALL/WIFI_ERROR) kept the previous
+  // state's red/green flags until the first `tick()` interval
+  // elapsed — so switching from BUSY to AWAY visibly stayed red for
+  // 900 ms before the green blink started, etc.
+  switch (state_) {
+    case STATUS_AVAILABLE:
+      redOn_ = false;
+      greenOn_ = true;
+      break;
+    case STATUS_BUSY:
+      redOn_ = true;
+      greenOn_ = false;
+      break;
+    case STATUS_IN_CALL:
+      // Blink red. Start the half-cycle in the ON phase so the user
+      // immediately sees the new state instead of a brief off period.
+      redOn_ = true;
+      greenOn_ = false;
+      blinkPhase_ = true;
+      break;
+    case STATUS_AWAY:
+      // Blink green.
+      redOn_ = false;
+      greenOn_ = true;
+      blinkPhase_ = true;
+      break;
+    case STATUS_WIFI_ERROR:
+      redOn_ = true;
+      greenOn_ = false;
+      blinkPhase_ = true;
+      break;
+    case STATUS_OFF:
+      redOn_ = false;
+      greenOn_ = false;
+      break;
   }
 
   applyOutputs();
