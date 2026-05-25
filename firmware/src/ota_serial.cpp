@@ -185,9 +185,17 @@ bool finalize(String& errorOut) {
     return false;
   }
   if (rcVerify != 0) {
+    // Surface the digest we computed over what was actually
+    // received, so the host can compare it with the digest it
+    // signed and tell whether the corruption happened on the wire.
+    char hex[65];
+    for (int i = 0; i < 32; i++) {
+      snprintf(hex + i * 2, 3, "%02x", digest[i]);
+    }
+    hex[64] = 0;
     Update.abort();
     resetState_();
-    errorOut = "signature_invalid";
+    errorOut = String("signature_invalid:received_sha=") + hex;
     return false;
   }
 

@@ -520,6 +520,33 @@ void handleSerialProvisioning() {
     emitJson(buf);
     return;
   }
+  if (cmd == "set_pin") {
+    if (!in["new_pin"].is<const char*>()) {
+      emitJson("{\"ok\":false,\"error\":\"new_pin_missing\"}");
+      return;
+    }
+    String newPin = String(static_cast<const char*>(in["new_pin"]));
+    newPin.trim();
+    if (newPin.length() < 4 || newPin.length() > 8) {
+      emitJson("{\"ok\":false,\"error\":\"pin_length\"}");
+      return;
+    }
+    for (size_t i = 0; i < newPin.length(); i++) {
+      if (!isdigit(newPin[i])) {
+        emitJson("{\"ok\":false,\"error\":\"pin_not_digits\"}");
+        return;
+      }
+    }
+    String h = AuthManager::hashPin(newPin);
+    if (!gStore.savePinHash(h)) {
+      emitJson("{\"ok\":false,\"error\":\"save_failed\"}");
+      return;
+    }
+    gConfig.pinHash = h;
+    gAuth.setPinHash(h);
+    emitJson("{\"ok\":true,\"event\":\"pin_changed\"}");
+    return;
+  }
   if (cmd == "wifi_list") {
     // Mirror of GET /api/wifi: returns the saved networks list with
     // a flag for which (if any) is currently connected.

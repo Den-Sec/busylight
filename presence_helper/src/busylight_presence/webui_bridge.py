@@ -245,9 +245,7 @@ class _BridgeHandler(BaseHTTPRequestHandler):
         if path == "/api/wifi":
             return self._api_post_wifi()
         if path == "/api/settings/pin":
-            # Bridge users are USB-trusted; PIN doesn't gate anything
-            # locally. Pretend success.
-            return self._send_json(200, {"ok": True})
+            return self._api_post_pin()
         if path == "/api/device/factory_reset":
             return self._api_post_factory_reset()
         if path in ("/api/schedule", "/api/mqtt",
@@ -255,6 +253,21 @@ class _BridgeHandler(BaseHTTPRequestHandler):
                     "/api/firmware/update"):
             return self._send_json(503, {"error": "needs_wifi_or_dedicated_flow"})
         self._send_json(404, {"error": "not_found"})
+
+    def _api_post_pin(self) -> None:
+        body = self._read_json_body()
+        new_pin = (body.get("new_pin") or "").strip()
+        current_pin = (body.get("current_pin") or "").strip()
+        if not new_pin:
+            return self._send_json(400, {"error": "invalid_payload"})
+        sc = self._serial()
+        if sc is None:
+            return self._send_json(503, {"error": "no_usb_device"})
+        try:
+            sc.set_pin(new_pin, current_pin)
+        except (SerialUnavailable, SerialProtocolError) as e:
+            return self._send_json(502, {"error": str(e)})
+        self._send_json(200, {"ok": True})
 
     def _api_post_factory_reset(self) -> None:
         # The web UI guards this with a confirm header; the firmware

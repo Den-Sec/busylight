@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.16] - 2026-05-25
+
+### Fixed
+- **PIN change from the web UI didn't actually change the PIN**: the bridge fake-accepted `POST /api/settings/pin` because, by design, the bridge doesn't gate anything (the USB cable is the trust boundary). But the device firmware still held the old PIN in NVS, so the device's own web UI (over Wi-Fi) kept rejecting the new PIN. Now both the bridge and the firmware have a real `set_pin` path: bridge proxies it through serial, firmware validates length/digits, hashes with PBKDF2, and saves to NVS.
+- **Firmware artifacts in v0.3.13/14/15 were the v0.3.12 binary repackaged** — the firmware code hadn't changed in those releases. After a successful factory reflash the device kept reading "0.3.12" in the web UI. Rebuilt the firmware fresh with `BUSYLIGHT_VERSION="0.3.16"` so the embedded version matches the release tag.
+
+### Added
+- OTA error messages now include the SHA-256 the device computed over the bytes it received: `signature_invalid:received_sha=<hex>`. Compared with the SHA the host signed, this nails down whether the corruption happens on the USB-CDC wire (different SHAs) or in our crypto code (same SHA, signature still fails). Diagnostic step toward fixing the `signature_invalid` Dennis keeps hitting on his PC.
+
 ## [0.3.15] - 2026-05-25
 
 ### Fixed

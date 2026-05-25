@@ -172,6 +172,20 @@ class SerialClient:
         about itself (hostname, fw version, wifi up/down, IP)."""
         return self._roundtrip({"cmd": "get_info"})
 
+    def set_pin(self, new_pin: str, current_pin: str = "") -> None:
+        """Change the device PIN. The firmware doesn't require
+        `current_pin` over the USB-trusted serial channel — it's
+        only there so the bridge can forward what the web UI sent."""
+        resp = self._roundtrip({
+            "cmd": "set_pin",
+            "new_pin": new_pin,
+            "current_pin": current_pin,
+        })
+        if not resp.get("ok"):
+            raise SerialProtocolError(
+                resp.get("error") or "set_pin rejected"
+            )
+
     def factory_reset(self) -> None:
         """Wipe the device NVS (PIN, saved Wi-Fi networks, schedule)
         and reboot. After this, the device boots with PIN = "1234" and
