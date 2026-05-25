@@ -29,9 +29,9 @@ import pystray
 from pystray import MenuItem as Item, Menu
 
 from . import __version__
-from .dashboard_window import DashboardWindow
 from .icons import status_icon
 from .settings_window import SettingsWindow
+from .webui_bridge import WebUiBridge
 from .webview_window import open_device_webui
 from .updater import (
     LatestRelease,
@@ -64,12 +64,7 @@ class TrayApp:
         self._icon: pystray.Icon | None = None
         self._paused = False
         self._settings = SettingsWindow(loop.cfg, on_save=self._handle_save)
-        self._dashboard = DashboardWindow(
-            loop,
-            on_open_settings=self._open_settings_from_dashboard,
-            on_set_state=lambda s: self._loop.force_state(s),
-            on_open_webui=lambda url: open_device_webui(url),
-        )
+        self._bridge = WebUiBridge()
         self._tick_thread: threading.Thread | None = None
         self._update_thread: threading.Thread | None = None
         self._stop_event = threading.Event()
@@ -199,10 +194,14 @@ class TrayApp:
             log.exception("settings window failed: %s", e)
 
     def _open_dashboard(self, _icon, _item):
+        # The "dashboard" is now the firmware's own web UI, served by
+        # the local bridge over USB serial. Same exact look and feel
+        # as the device's HTTP UI, but doesn't require Wi-Fi.
         try:
-            self._dashboard.open()
+            url = self._bridge.start()
+            open_device_webui(url)
         except Exception as e:  # noqa: BLE001
-            log.exception("dashboard window failed: %s", e)
+            log.exception("web UI failed: %s", e)
 
     def _open_settings_from_dashboard(self) -> None:
         # Dashboard closes itself before calling us, so we can just
@@ -222,6 +221,10 @@ class TrayApp:
         self._stop_event.set()
         try:
             self._settings.close()
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            self._bridge.stop()
         except Exception:  # noqa: BLE001
             pass
         if self._icon is not None:

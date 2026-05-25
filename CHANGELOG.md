@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.6] - 2026-05-25
+
+### Changed
+- **The desktop app now hosts the firmware's own web UI locally and serves it over USB.** The presence helper bundles the same `index.html` / `styles.css` / `app.js` the firmware ships, spins up a local HTTP server on `127.0.0.1:<random>`, and proxies `/api/*` requests to the device over USB serial. The tray click opens that local URL inside a WebView2 window. End result: identical look and feel to opening the device's `busylight-xxxx.local` page in the browser, but it works without Wi-Fi.
+- Login on the bridge accepts any PIN (or none) — a connected USB cable already implies physical access, same trust model the wizard uses for provisioning.
+
+### Added
+- Firmware: `{"cmd":"wifi_list"}` and `{"cmd":"wifi_remove","ssid":"..."}` runtime commands, mirroring `GET /api/wifi` and `DELETE /api/wifi` over the existing USB JSON protocol. Lets the bundled web UI manage Wi-Fi networks even when the device itself has no network.
+
+### Removed
+- Custom `dashboard_window.py` (the new bridge + WebView gives the exact web UI the firmware already designed; no need for a parallel one in CTk).
+
+### Known limitations in bridge mode
+- Schedule / MQTT / firmware OTA / device reboot via the web UI return 503 from the bridge (they need the live device state Wi-Fi provides). The dedicated USB OTA path from the presence menu remains.
+
 ## [0.3.5] - 2026-05-25
 
 ### Changed

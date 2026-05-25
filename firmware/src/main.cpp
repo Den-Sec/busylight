@@ -494,6 +494,44 @@ void handleSerialProvisioning() {
     emitJson(buf);
     return;
   }
+  if (cmd == "wifi_list") {
+    // Mirror of GET /api/wifi: returns the saved networks list with
+    // a flag for which (if any) is currently connected.
+    String currentSsid = WiFi.SSID();
+    String body = "{\"ok\":true,\"event\":\"wifi_list\",\"networks\":[";
+    bool first = true;
+    for (const auto& net : gConfig.networks) {
+      if (!first) body += ",";
+      first = false;
+      body += "{\"ssid\":\"";
+      body += net.ssid;
+      body += "\",\"current\":";
+      body += (net.ssid == currentSsid) ? "true" : "false";
+      body += "}";
+    }
+    body += "],\"max\":";
+    body += String(static_cast<unsigned>(ConfigStore::kMaxWifiNetworks));
+    body += "}";
+    emitJson(body.c_str());
+    return;
+  }
+  if (cmd == "wifi_remove") {
+    if (!in["ssid"].is<const char*>()) {
+      emitJson("{\"ok\":false,\"error\":\"ssid_missing\"}");
+      return;
+    }
+    String ssid = String(static_cast<const char*>(in["ssid"]));
+    ssid.trim();
+    if (!gStore.removeNetwork(ssid)) {
+      emitJson("{\"ok\":false,\"error\":\"not_found\"}");
+      return;
+    }
+    gConfig.networks = gStore.loadNetworks();
+    gConfig.configured = !gConfig.networks.empty();
+    gConfig.wifiListDirty = true;
+    emitJson("{\"ok\":true,\"event\":\"wifi_removed\"}");
+    return;
+  }
   if (cmd == "wifi_add") {
     // Add a Wi-Fi network without resetting other config (PIN,
     // existing networks). Same semantics as POST /api/wifi over

@@ -172,6 +172,28 @@ class SerialClient:
         about itself (hostname, fw version, wifi up/down, IP)."""
         return self._roundtrip({"cmd": "get_info"})
 
+    def wifi_list(self) -> dict:
+        """Return the saved Wi-Fi networks list and which one is
+        currently connected, mirroring GET /api/wifi.
+        """
+        resp = self._roundtrip({"cmd": "wifi_list"})
+        if not resp.get("ok"):
+            raise SerialProtocolError(
+                resp.get("error") or "wifi_list rejected"
+            )
+        return {
+            "networks": resp.get("networks", []),
+            "max": resp.get("max", 6),
+        }
+
+    def wifi_remove(self, ssid: str) -> None:
+        """Remove a saved Wi-Fi network."""
+        resp = self._roundtrip({"cmd": "wifi_remove", "ssid": ssid})
+        if not resp.get("ok"):
+            raise SerialProtocolError(
+                resp.get("error") or "wifi_remove rejected"
+            )
+
     def wifi_add(self, ssid: str, password: str = "") -> None:
         """Add a Wi-Fi network without disturbing the rest of config.
 

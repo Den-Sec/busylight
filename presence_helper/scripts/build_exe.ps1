@@ -31,6 +31,7 @@ if (-not (Test-Path ".\.venv\Scripts\pyinstaller.exe")) {
   --uac-admin `
   --name BusyLightPresence `
   --paths src `
+  --add-data "src/busylight_presence/webui;busylight_presence/webui" `
   --collect-data pystray `
   --collect-data customtkinter `
   --collect-data webview `

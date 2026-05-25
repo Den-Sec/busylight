@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <title>BusyLight</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700&family=JetBrains+Mono:wght@500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="bar">
+      <a class="brand" href="/">
+        <span class="brand-mark" aria-hidden="true">
+          <span class="brand-mark-r"></span>
+          <span class="brand-mark-g"></span>
+        </span>
+        <span class="brand-text">
+          <span class="brand-name">BusyLight</span>
+          <span class="brand-sub" data-i18n="brand.sub">Status light</span>
+        </span>
+      </a>
+      <div class="bar-right">
+        <div class="langswitch" role="group" aria-label="Language">
+          <button type="button" data-lang-btn="en">EN</button>
+          <button type="button" data-lang-btn="it">IT</button>
+        </div>
+        <span class="net" id="link-state">
+          <span class="net-dot"></span>
+          <span data-i18n="topbar.online">Online</span>
+        </span>
+        <button id="logout-btn" type="button" class="link hidden" data-i18n="topbar.signout">Sign out</button>
+      </div>
+    </header>
+
+    <main class="page">
+
+      <!-- LOGIN -->
+      <section id="login-card" class="lock">
+        <div class="lock-card">
+          <div class="lock-bead" aria-hidden="true">
+            <span class="lock-bead-halo"></span>
+            <span class="lock-bead-core"></span>
+            <span class="lock-bead-shine"></span>
+          </div>
+          <span class="kicker" data-i18n="login.kicker">Authenticate</span>
+          <h1 class="display" data-i18n="login.title">Welcome back.</h1>
+          <p class="lede" data-i18n="login.lede">
+            This BusyLight is paired to your network. Enter the PIN you set
+            during setup to take control.
+          </p>
+          <div class="field">
+            <label for="pin" data-i18n="login.access_pin">Access PIN</label>
+            <input
+              id="pin"
+              type="password"
+              inputmode="numeric"
+              maxlength="8"
+              autocomplete="off"
+              placeholder="4–8 digits"
+              data-i18n-attr="placeholder: login.placeholder"
+            />
+          </div>
+          <button id="login-btn" type="button" class="cta">
+            <span data-i18n="login.unlock">Unlock</span>
+            <span class="cta-arrow" aria-hidden="true">→</span>
+          </button>
+          <p class="msg" id="login-msg" role="status"></p>
+        </div>
+      </section>
+
+      <!-- DASHBOARD -->
+      <div id="console-grid" class="dash hidden">
+
+        <!-- HERO -->
+        <section class="hero" id="status-orb" data-state="AVAILABLE">
+          <div class="hero-stage" aria-hidden="true">
+            <span class="hero-halo"></span>
+            <span class="hero-bead">
+              <span class="hero-bead-shine"></span>
+            </span>
+          </div>
+          <div class="hero-info">
+            <span class="kicker" data-i18n="hero.kicker">Currently</span>
+            <h1 class="display display--xl" id="current-state">Available</h1>
+            <p class="lede" id="hero-sub">Come on in — the light is on.</p>
+          </div>
+        </section>
+
+        <!-- STATE SELECTOR -->
+        <section class="block">
+          <header class="block-head">
+            <h2 data-i18n="set_state.title">Set state</h2>
+            <span class="block-sub" data-i18n="set_state.sub">Tap to switch the desk light</span>
+          </header>
+          <div class="tiles">
+            <button class="tile" data-state="AVAILABLE">
+              <span class="tile-swatch"></span>
+              <span class="tile-text">
+                <span class="tile-name" data-i18n="states.AVAILABLE.name">Available</span>
+                <span class="tile-desc" data-i18n="states.AVAILABLE.desc">Solid green · door open</span>
+              </span>
+            </button>
+            <button class="tile" data-state="BUSY">
+              <span class="tile-swatch"></span>
+              <span class="tile-text">
+                <span class="tile-name" data-i18n="states.BUSY.name">Busy</span>
+                <span class="tile-desc" data-i18n="states.BUSY.desc">Solid red · focus mode</span>
+              </span>
+            </button>
+            <button class="tile" data-state="IN_CALL">
+              <span class="tile-swatch"></span>
+              <span class="tile-text">
+                <span class="tile-name" data-i18n="states.IN_CALL.name">In Call</span>
+                <span class="tile-desc" data-i18n="states.IN_CALL.desc">Red blink · meeting</span>
+              </span>
+            </button>
+            <button class="tile" data-state="AWAY">
+              <span class="tile-swatch"></span>
+              <span class="tile-text">
+                <span class="tile-name" data-i18n="states.AWAY.name">Away</span>
+                <span class="tile-desc" data-i18n="states.AWAY.desc">Green blink · stepped out</span>
+              </span>
+            </button>
+            <button class="tile" data-state="OFF">
+              <span class="tile-swatch"></span>
+              <span class="tile-text">
+                <span class="tile-name" data-i18n="states.OFF.name">Off</span>
+                <span class="tile-desc" data-i18n="states.OFF.desc">Lights out</span>
+              </span>
+            </button>
+          </div>
+          <p class="msg msg--center" id="state-msg"></p>
+        </section>
+
+        <!-- TWO COL -->
+        <div class="cols">
+          <section class="block">
+            <header class="block-head">
+              <h2 data-i18n="device.title">Device</h2>
+              <span class="block-sub" data-i18n="device.sub">Read-only</span>
+            </header>
+            <dl class="readout">
+              <div><dt data-i18n="device.hostname">Hostname</dt><dd id="t-host" class="mono">—</dd></div>
+              <div><dt data-i18n="device.address">Address</dt><dd id="t-mdns" class="mono">—</dd></div>
+              <div><dt data-i18n="device.local_ip">Local IP</dt><dd id="t-ip" class="mono">—</dd></div>
+              <div>
+                <dt data-i18n="device.wifi">Wi-Fi</dt>
+                <dd>
+                  <span id="t-rssi">—</span>
+                  <span id="t-bars" class="bars" aria-hidden="true">
+                    <span></span><span></span><span></span><span></span>
+                  </span>
+                </dd>
+              </div>
+              <div><dt data-i18n="device.firmware">Firmware</dt><dd id="t-ver" class="mono">—</dd></div>
+              <div><dt data-i18n="device.uptime">Uptime</dt><dd id="t-uptime" class="mono">—</dd></div>
+            </dl>
+          </section>
+
+          <section class="block">
+            <header class="block-head">
+              <h2 data-i18n="access.title">Access</h2>
+              <span class="block-sub" data-i18n="access.sub">Change PIN</span>
+            </header>
+            <div class="block-body">
+              <div class="field">
+                <label for="current-pin" data-i18n="access.current_pin">Current PIN</label>
+                <input
+                  id="current-pin"
+                  type="password"
+                  inputmode="numeric"
+                  maxlength="8"
+                  autocomplete="off"
+                />
+              </div>
+              <div class="field">
+                <label for="new-pin" data-i18n="access.new_pin">New PIN</label>
+                <input
+                  id="new-pin"
+                  type="password"
+                  inputmode="numeric"
+                  maxlength="8"
+                  autocomplete="off"
+                  placeholder="4–8 digits"
+                  data-i18n-attr="placeholder: login.placeholder"
+                />
+              </div>
+              <button id="change-pin-btn" type="button" class="cta cta--block">
+                <span data-i18n="access.rotate">Rotate PIN</span>
+                <span class="cta-arrow" aria-hidden="true">→</span>
+              </button>
+              <p class="msg" id="pin-msg" role="status"></p>
+            </div>
+          </section>
+        </div>
+
+        <!-- WI-FI NETWORKS -->
+        <section class="block" id="wifi-card">
+          <header class="block-head">
+            <h2 data-i18n="wifi.title">Wi-Fi networks</h2>
+            <span class="block-sub" id="wifi-meta"></span>
+          </header>
+          <div class="block-body">
+            <ul class="wifi-list" id="wifi-list" aria-live="polite"></ul>
+            <p class="lede lede--sm" id="wifi-empty" data-i18n="wifi.empty" hidden>
+              No saved Wi-Fi networks yet. Add one to keep this BusyLight online when you move it around.
+            </p>
+
+            <div class="wifi-add">
+              <div class="field">
+                <label for="wifi-new-ssid" data-i18n="wifi.ssid">Network name (SSID)</label>
+                <input
+                  id="wifi-new-ssid"
+                  type="text"
+                  maxlength="32"
+                  autocomplete="off"
+                />
+              </div>
+              <div class="field">
+                <label for="wifi-new-password" data-i18n="wifi.password">Password</label>
+                <input
+                  id="wifi-new-password"
+                  type="password"
+                  maxlength="63"
+                  autocomplete="new-password"
+                  data-i18n-attr="placeholder: wifi.password_placeholder"
+                  placeholder="Leave empty for open networks"
+                />
+              </div>
+              <button id="wifi-add-btn" type="button" class="cta cta--block">
+                <span data-i18n="wifi.add">Save network</span>
+                <span class="cta-arrow" aria-hidden="true">→</span>
+              </button>
+              <p class="msg" id="wifi-msg" role="status"></p>
+            </div>
+          </div>
+        </section>
+
+        <!-- SCHEDULE -->
+        <section class="block" id="schedule-card">
+          <header class="block-head">
+            <h2 data-i18n="schedule.title">Schedule</h2>
+            <span class="block-sub" id="schedule-meta"></span>
+          </header>
+          <div class="block-body">
+            <p class="lede lede--sm" data-i18n="schedule.lede">
+              Set the BusyLight automatically based on the time of day. Useful for "work hours only" or "off at night".
+            </p>
+            <ul class="schedule-list" id="schedule-list" aria-live="polite"></ul>
+            <p class="lede lede--sm" id="schedule-empty" data-i18n="schedule.empty" hidden>
+              No schedule yet. Add one below.
+            </p>
+
+            <div class="schedule-add">
+              <div class="field">
+                <label data-i18n="schedule.days">Days</label>
+                <div class="day-picker">
+                  <button type="button" class="day-btn" data-day="1" data-i18n="day.mon_short">Mon</button>
+                  <button type="button" class="day-btn" data-day="2" data-i18n="day.tue_short">Tue</button>
+                  <button type="button" class="day-btn" data-day="3" data-i18n="day.wed_short">Wed</button>
+                  <button type="button" class="day-btn" data-day="4" data-i18n="day.thu_short">Thu</button>
+                  <button type="button" class="day-btn" data-day="5" data-i18n="day.fri_short">Fri</button>
+                  <button type="button" class="day-btn" data-day="6" data-i18n="day.sat_short">Sat</button>
+                  <button type="button" class="day-btn" data-day="0" data-i18n="day.sun_short">Sun</button>
+                </div>
+              </div>
+              <div class="schedule-time-row">
+                <div class="field">
+                  <label for="sched-start" data-i18n="schedule.from">From</label>
+                  <input id="sched-start" type="time" value="09:00" />
+                </div>
+                <div class="field">
+                  <label for="sched-end" data-i18n="schedule.to">To</label>
+                  <input id="sched-end" type="time" value="18:00" />
+                </div>
+                <div class="field">
+                  <label for="sched-state" data-i18n="schedule.set_to">Set to</label>
+                  <select id="sched-state">
+                    <option value="AVAILABLE">Available</option>
+                    <option value="BUSY">Busy</option>
+                    <option value="AWAY">Away</option>
+                    <option value="OFF" selected>Off</option>
+                  </select>
+                </div>
+              </div>
+              <button id="sched-add-btn" type="button" class="cta cta--block">
+                <span data-i18n="schedule.add">Add entry</span>
+                <span class="cta-arrow" aria-hidden="true">→</span>
+              </button>
+              <p class="msg" id="sched-msg" role="status"></p>
+            </div>
+          </div>
+        </section>
+
+        <!-- MQTT -->
+        <section class="block">
+          <header class="block-head">
+            <h2 data-i18n="mqtt.title">MQTT / Home Assistant</h2>
+            <span class="block-sub" id="mqtt-status" data-i18n="mqtt.disabled">Disabled</span>
+          </header>
+          <div class="block-body">
+            <p class="lede lede--sm" data-i18n="mqtt.lede">
+              Connect this BusyLight to an MQTT broker. Home Assistant auto-discovers it as a Select entity.
+            </p>
+            <label class="mqtt-toggle">
+              <input id="mqtt-enabled" type="checkbox" />
+              <span data-i18n="mqtt.enable">Enable MQTT bridge</span>
+            </label>
+            <div class="field">
+              <label for="mqtt-host" data-i18n="mqtt.host">Broker host</label>
+              <input id="mqtt-host" type="text" autocomplete="off" placeholder="homeassistant.local" />
+            </div>
+            <div class="field">
+              <label for="mqtt-port" data-i18n="mqtt.port">Port</label>
+              <input id="mqtt-port" type="text" inputmode="numeric" autocomplete="off" placeholder="1883" />
+            </div>
+            <div class="field">
+              <label for="mqtt-user" data-i18n="mqtt.username">Username</label>
+              <input id="mqtt-user" type="text" autocomplete="off" />
+            </div>
+            <div class="field">
+              <label for="mqtt-pass" data-i18n="mqtt.password">Password</label>
+              <input id="mqtt-pass" type="password" autocomplete="new-password" data-i18n-attr="placeholder: mqtt.password_placeholder" placeholder="Leave empty to keep current" />
+            </div>
+            <button id="mqtt-save" type="button" class="cta cta--block">
+              <span data-i18n="mqtt.save">Save MQTT settings</span>
+              <span class="cta-arrow" aria-hidden="true">→</span>
+            </button>
+            <p class="msg" id="mqtt-msg" role="status"></p>
+          </div>
+        </section>
+
+        <!-- OTA -->
+        <section class="block">
+          <header class="block-head">
+            <h2 data-i18n="ota.title">Firmware</h2>
+            <span class="block-sub" data-i18n="ota.sub">Optional</span>
+          </header>
+          <div class="block-body">
+            <p class="lede lede--sm" data-i18n="ota.lede">
+              Upload a new .bin compiled for the ESP32-C6. It writes to the
+              inactive slot and reboots into it.
+            </p>
+            <label class="picker filepick" id="ota-picker">
+              <input id="ota-file" type="file" accept=".bin" />
+              <span class="filepick-name" id="ota-filename" data-i18n="ota.no_file">No file selected</span>
+              <span class="filepick-cta" data-i18n="ota.choose">Choose .bin</span>
+            </label>
+            <label class="picker filepick" id="ota-sig-picker">
+              <input id="ota-sig-file" type="file" accept=".sig" />
+              <span class="filepick-name" id="ota-sig-filename" data-i18n="ota.no_sig">No signature selected</span>
+              <span class="filepick-cta" data-i18n="ota.choose_sig">Choose .sig</span>
+            </label>
+            <button id="ota-btn" type="button" class="cta cta--block">
+              <span data-i18n="ota.upload">Upload &amp; reboot</span>
+              <span class="cta-arrow" aria-hidden="true">→</span>
+            </button>
+            <progress id="ota-progress" class="hidden" max="100" value="0"></progress>
+            <p class="msg" id="ota-msg" role="status"></p>
+          </div>
+        </section>
+
+        <!-- MAINTENANCE -->
+        <section class="block block--quiet">
+          <header class="block-head">
+            <h2 data-i18n="maint.title">Maintenance</h2>
+            <span class="block-sub" data-i18n="maint.sub">Use with care</span>
+          </header>
+          <div class="maint">
+            <div class="maint-row">
+              <div class="maint-text">
+                <strong data-i18n="maint.restart.title">Restart device</strong>
+                <p data-i18n="maint.restart.desc">Reboots without touching Wi-Fi or PIN.</p>
+              </div>
+              <button id="reboot-btn" type="button" class="ghost" data-i18n="maint.restart.btn">Restart</button>
+            </div>
+            <div class="maint-row">
+              <div class="maint-text">
+                <strong data-i18n="maint.factory.title">Factory reset</strong>
+                <p data-i18n="maint.factory.desc">Wipes Wi-Fi and PIN. A USB cable is required to provision the device again.</p>
+              </div>
+              <button id="factory-reset-btn" type="button" class="ghost ghost--danger" data-i18n="maint.factory.btn">Reset</button>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <footer class="foot">
+      <span class="foot-mark">BusyLight</span>
+      <span class="foot-meta">D-Enterprise · MIT</span>
+      <a href="https://github.com" target="_blank" rel="noopener" class="foot-link" data-i18n="foot.source">Source ↗</a>
+    </footer>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
