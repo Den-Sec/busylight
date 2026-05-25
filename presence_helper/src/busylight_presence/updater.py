@@ -201,8 +201,11 @@ def install_and_restart(new_exe: Path) -> None:
     """Replace the currently-running exe with `new_exe` and relaunch.
 
     Windows only. Spawns a detached `cmd /c <bat>` and exits the current
-    process — the .bat then waits, moves the file, restarts, and deletes
-    itself.
+    process — the .bat then waits, moves the file (with retries),
+    restarts, and deletes itself. We use `os._exit` rather than
+    `sys.exit` because the latter only raises `SystemExit` on the
+    calling thread; daemon threads + pystray's Windows message loop
+    would keep the exe alive and the file lock with it.
     """
     if sys.platform != "win32":
         raise RuntimeError("auto-install is Windows-only")
@@ -214,9 +217,6 @@ def install_and_restart(new_exe: Path) -> None:
 
     bat = _write_self_replace_bat(new_exe=new_exe, target=current)
     log.info("spawning installer %s -> %s", new_exe, current)
-    # DETACHED_PROCESS + CREATE_NEW_PROCESS_GROUP so the .bat survives
-    # our own exit. /c keeps cmd alive only until the bat finishes,
-    # which is what we want.
     DETACHED_PROCESS = 0x00000008
     CREATE_NEW_PROCESS_GROUP = 0x00000200
     subprocess.Popen(
@@ -224,11 +224,10 @@ def install_and_restart(new_exe: Path) -> None:
         creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
         close_fds=True,
     )
-    # Give the launcher a beat to start, then bow out so the move can
-    # actually proceed (Windows holds an exclusive lock on the running
-    # exe).
-    log.info("exiting current process so updater can take over")
-    sys.exit(0)
+    # Hard exit so all threads die and Windows releases the exe lock.
+    log.info("hard-exiting current process so updater can take over")
+    import os
+    os._exit(0)
 
 
 # ---------------------------------------------------------------------------
@@ -250,21 +249,44 @@ def _self_version() -> str:
 
 
 def _write_self_replace_bat(*, new_exe: Path, target: Path) -> Path:
-    """Emit a one-shot .bat that does: wait, move, relaunch, self-delete."""
+    """Emit a one-shot .bat that does: wait, retry-move, relaunch,
+    self-delete.
+
+    The "retry-move" loop is important: Windows can hold the file
+    lock on the old exe for several seconds after the process
+    nominally exits (PyInstaller bootloader, antivirus scanning of
+    the new file, etc). A single `move` 2 seconds later often used
+    to fail silently, leaving the user with the old version and no
+    error message.
+    """
     bat = Path(tempfile.gettempdir()) / "busylight-update.bat"
-    # Use 8.3-safe absolute paths in quotes so spaces don't break the
-    # move. `move /y` overwrites; `start ""` keeps the relaunched exe
-    # decoupled from the bat's cmd window.
+    # `setlocal` + numeric tries; on each attempt sleep 1s and try to
+    # `move /y`. If it succeeds, jump out and relaunch. After 30
+    # attempts (≈30 s) give up — better than spinning forever.
     bat.write_text(
         "@echo off\r\n"
         "rem BusyLight Presence self-updater (auto-generated)\r\n"
-        # Wait ~2s for the original process to exit so Windows releases
-        # the file lock on the .exe.
-        "timeout /t 2 /nobreak >nul\r\n"
-        f'move /y "{new_exe}" "{target}" >nul\r\n'
+        "setlocal enabledelayedexpansion\r\n"
+        # Initial pause so the original process has a moment to start
+        # tearing down (icon stop, thread joins, sys.exit).
+        "timeout /t 3 /nobreak >nul\r\n"
+        "set /a attempts=0\r\n"
+        ":retry\r\n"
+        "set /a attempts=!attempts!+1\r\n"
+        f'move /y "{new_exe}" "{target}" >nul 2>&1\r\n'
+        "if exist " + f'"{new_exe}"' + " (\r\n"
+        "  if !attempts! geq 30 (\r\n"
+        "    rem Out of retries — the old exe is still locked. Leave\r\n"
+        "    rem the new exe in place so the user can move it manually.\r\n"
+        "    goto :done\r\n"
+        "  )\r\n"
+        "  timeout /t 1 /nobreak >nul\r\n"
+        "  goto :retry\r\n"
+        ")\r\n"
         f'start "" "{target}"\r\n'
+        ":done\r\n"
         # Delete the bat itself last so its own handle is gone.
-        f'del "%~f0"\r\n',
+        f'(goto) 2>nul & del "%~f0"\r\n',
         encoding="ascii",
     )
     return bat

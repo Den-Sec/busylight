@@ -441,15 +441,28 @@ class TrayApp:
             progress.set_progress(1.0)
             progress.set_message(
                 "Download complete. Restarting BusyLight…\n"
-                "Approve the Windows UAC prompt when it appears."
+                "If Windows asks for permission, click Yes."
             )
             import time
             time.sleep(1.5)
             progress.close()
-            self._stop_event.set()  # let worker threads wind down
-            install_and_restart(new_exe)
+            # Tell every cooperating thread we're going away so they
+            # release their handles + ports. Then stop the tray icon
+            # cleanly. The .bat already retries the move for 30 s in
+            # case Windows holds the exe lock longer than expected.
+            self._stop_event.set()
+            try:
+                self._bridge.stop()
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                if self._icon is not None:
+                    self._icon.stop()
+            except Exception:  # noqa: BLE001
+                pass
+            install_and_restart(new_exe)  # never returns
         except SystemExit:
-            raise  # install_and_restart exits the process by design
+            raise
         except Exception as e:  # noqa: BLE001
             log.exception("update install failed: %s", e)
             self._notify("Update failed", str(e))

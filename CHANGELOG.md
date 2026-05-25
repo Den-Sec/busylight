@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.17] - 2026-05-25
+
+### Fixed
+- **Auto-update appeared to succeed but the old exe stayed in place**: the `.bat` did a single `move /y` after a 2 s wait. That wasn't enough — Windows can hold the file lock on the just-exited PyInstaller exe for several seconds (bootloader teardown, AV scanning the new file). The single `move` silently failed and the user was left on the previous version with no error. The relaunch then started the still-old exe.
+  - The self-replace `.bat` now waits 3 s, then retries `move /y` up to 30 times with 1 s spacing. As soon as the move succeeds it relaunches the new exe; if all 30 retries fail it leaves the new exe in place so the user can swap manually.
+  - The Python side now calls `os._exit(0)` instead of `sys.exit(0)`, so daemon threads + pystray's Windows message loop don't keep the file lock alive after the "exit".
+  - The tray icon, bridge HTTP server, and presence loop are stopped cleanly before the hard exit.
+
 ## [0.3.16] - 2026-05-25
 
 ### Fixed
