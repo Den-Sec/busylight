@@ -35,6 +35,7 @@ if (-not (Test-Path ".\.venv\Scripts\pyinstaller.exe")) {
   --collect-data pystray `
   --collect-data customtkinter `
   --collect-data webview `
+  --collect-all esptool `
   --collect-submodules serial `
   scripts\_entry.py 2>&1 | ForEach-Object { "$_" }
 

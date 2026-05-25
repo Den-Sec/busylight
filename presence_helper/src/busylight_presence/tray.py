@@ -83,6 +83,7 @@ class TrayApp:
             Menu.SEPARATOR,
             Item("Open BusyLight", self._open_dashboard, default=True),
             Item("Update firmware via USB…", self._on_firmware_ota_usb),
+            Item("Reflash from factory (USB)…", self._on_factory_reflash),
             Item("Settings…", self._open_settings),
             Item(
                 lambda _i: "Resume" if self._paused else "Pause",
@@ -430,4 +431,155 @@ class TrayApp:
         self._notify(
             "BusyLight update",
             f"Device updated to {release.tag}. Reconnecting…",
+        )
+
+    # ------------------------------------------------------------------
+    # Factory reflash (bypasses the OTA signature check)
+    # ------------------------------------------------------------------
+    def _on_factory_reflash(self, _icon, _item) -> None:
+        threading.Thread(
+            target=self._factory_reflash, daemon=True
+        ).start()
+
+    def _factory_reflash(self) -> None:
+        """Re-flash the combined firmware image (bootloader + partitions
+        + app) over USB using esptool. Bypasses the running app's OTA
+        signature check, so this is the escape hatch when the device's
+        embedded public key doesn't match the one used to sign our
+        release `.bin`s.
+
+        Preserves NVS (PIN, saved Wi-Fi, schedule) because the
+        partition table layout is identical and esptool only writes
+        the regions we tell it to — we deliberately do NOT pass
+        `erase_all`.
+        """
+        import tempfile
+        import urllib.request
+        from pathlib import Path
+
+        from .serial_client import find_busylight_ports
+
+        ports = find_busylight_ports()
+        if not ports:
+            self._notify(
+                "BusyLight reflash",
+                "No USB device — plug in the cable and try again.",
+            )
+            return
+        port = ports[0]
+
+        try:
+            release = fetch_latest_release()
+        except Exception as e:  # noqa: BLE001
+            self._notify("BusyLight reflash", f"GitHub lookup failed: {e}")
+            return
+        if release is None:
+            self._notify(
+                "BusyLight reflash",
+                "Couldn't reach GitHub — check your internet connection.",
+            )
+            return
+
+        # The release has firmware.bin (single app image, signed) but
+        # for a factory reflash we need the combined image. Pick the
+        # asset whose name contains "factory".
+        factory_asset = None
+        for a in [release.firmware_asset, release.signature_asset]:
+            pass
+        # Look in the raw release JSON because LatestRelease only
+        # exposes the OTA pair.
+        try:
+            import json
+            req = urllib.request.Request(
+                "https://api.github.com/repos/Den-Sec/busylight/releases/latest",
+                headers={
+                    "Accept": "application/vnd.github+json",
+                    "User-Agent": f"busylight-presence/{__version__}",
+                },
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read().decode("utf-8", errors="replace"))
+            for a in data.get("assets") or []:
+                name = (a.get("name") or "").lower()
+                if name.endswith(".bin") and "factory" in name:
+                    factory_asset = {
+                        "name": a["name"],
+                        "url": a["browser_download_url"],
+                    }
+                    break
+        except Exception as e:  # noqa: BLE001
+            self._notify(
+                "BusyLight reflash",
+                f"Couldn't read release assets: {e}",
+            )
+            return
+
+        if factory_asset is None:
+            self._notify(
+                "BusyLight reflash",
+                f"Release {release.tag} has no `.factory.bin` asset.",
+            )
+            return
+
+        self._notify(
+            "BusyLight reflash",
+            f"Downloading {factory_asset['name']}…",
+        )
+        try:
+            dest = Path(tempfile.gettempdir()) / "busylight-update"
+            dest.mkdir(parents=True, exist_ok=True)
+            target = dest / factory_asset["name"]
+            req = urllib.request.Request(
+                factory_asset["url"],
+                headers={"User-Agent": f"busylight-presence/{__version__}"},
+            )
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                target.write_bytes(resp.read())
+        except Exception as e:  # noqa: BLE001
+            self._notify("BusyLight reflash", f"Download failed: {e}")
+            return
+
+        # esptool needs exclusive ownership of the COM port; pause
+        # the presence polling loop so it doesn't compete for the cable.
+        self._notify(
+            "BusyLight reflash",
+            "Re-flashing device — don't unplug the cable…",
+        )
+        self._paused = True
+        try:
+            import esptool
+            args = [
+                "--chip", "esp32c6",
+                "--port", port,
+                "--baud", "460800",
+                "--before", "default_reset",
+                "--after", "hard_reset",
+                "write_flash",
+                "--flash_mode", "dio",
+                "--flash_freq", "80m",
+                "--flash_size", "4MB",
+                "0x0", str(target),
+            ]
+            esptool.main(args)
+        except SystemExit as e:
+            # esptool calls sys.exit on errors; treat non-zero as failure.
+            if getattr(e, "code", 0):
+                self._notify(
+                    "BusyLight reflash",
+                    f"esptool failed (exit {e.code}).",
+                )
+                self._paused = False
+                return
+        except Exception as e:  # noqa: BLE001
+            self._notify(
+                "BusyLight reflash",
+                f"Reflash failed: {e}",
+            )
+            self._paused = False
+            return
+
+        self._paused = False
+        self._notify(
+            "BusyLight reflash",
+            f"Device re-flashed to {release.tag}. Reconnecting…",
         )

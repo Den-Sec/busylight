@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.8] - 2026-05-25
+
+### Added
+- Tray menu item **"Reflash from factory (USB)…"**: bundles `esptool` and writes the combined `firmware.factory.bin` (bootloader + partitions + app) over the USB cable. Bypasses the running app's OTA signature check, so this is the escape hatch when the device's embedded public key doesn't match the one used to sign current releases. NVS (PIN, saved Wi-Fi, schedule) is preserved.
+- GitHub release assets now include `firmware-X.Y.Z.factory.bin` next to the OTA pair.
+
+### Why this exists
+A device flashed with a different / older signing key will reject every OTA update with `signature_invalid`. The OTA path can't fix itself because the signature check runs *before* the new image is committed. The factory reflash writes the new firmware (with the current public key embedded) directly to flash, after which OTA updates work normally again.
+
 ## [0.3.7] - 2026-05-25
 
 ### Added
