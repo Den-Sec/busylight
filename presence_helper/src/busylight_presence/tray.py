@@ -104,6 +104,7 @@ class TrayApp:
             Item(self._update_label, self._on_update_click,
                  enabled=lambda _i: self._pending_update is not None),
             Item("Check for updates now", self._on_manual_check),
+            Item("View last update log", self._on_view_update_log),
             Menu.SEPARATOR,
             Item("Quit", self._quit),
         )
@@ -335,6 +336,33 @@ class TrayApp:
                     "BusyLight Presence",
                     f"You're on the latest version ({__version__}).",
                 )
+
+    def _on_view_update_log(self, _icon, _item) -> None:
+        """Open `%TEMP%\\busylight-update.log` in the default editor.
+
+        Useful when the self-update appears to have done nothing —
+        the log lines reveal whether `move /y` failed (and why),
+        whether the new exe got `start`-ed, etc.
+        """
+        import os
+        import subprocess
+        import tempfile
+        log_path = os.path.join(tempfile.gettempdir(),
+                                "busylight-update.log")
+        if not os.path.exists(log_path):
+            self._notify(
+                "BusyLight update",
+                "No update log yet — try the install once first.",
+            )
+            return
+        try:
+            os.startfile(log_path)
+        except Exception as e:  # noqa: BLE001
+            log.warning("could not open update log: %s", e)
+            try:
+                subprocess.Popen(["notepad.exe", log_path])
+            except Exception:  # noqa: BLE001
+                pass
 
     def _on_manual_check(self, _icon, _item) -> None:
         def _both() -> None:

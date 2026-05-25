@@ -250,42 +250,48 @@ def _self_version() -> str:
 
 def _write_self_replace_bat(*, new_exe: Path, target: Path) -> Path:
     """Emit a one-shot .bat that does: wait, retry-move, relaunch,
-    self-delete.
+    log every step to %TEMP%\\busylight-update.log.
 
-    The "retry-move" loop is important: Windows can hold the file
-    lock on the old exe for several seconds after the process
-    nominally exits (PyInstaller bootloader, antivirus scanning of
-    the new file, etc). A single `move` 2 seconds later often used
-    to fail silently, leaving the user with the old version and no
-    error message.
+    The log is intentionally left behind after the .bat self-deletes
+    so we can diagnose the "update silently did nothing" case Dennis
+    keeps hitting (file lock that never releases, antivirus
+    quarantine, etc).
     """
     bat = Path(tempfile.gettempdir()) / "busylight-update.bat"
-    # `setlocal` + numeric tries; on each attempt sleep 1s and try to
-    # `move /y`. If it succeeds, jump out and relaunch. After 30
-    # attempts (≈30 s) give up — better than spinning forever.
+    log_path = Path(tempfile.gettempdir()) / "busylight-update.log"
     bat.write_text(
         "@echo off\r\n"
         "rem BusyLight Presence self-updater (auto-generated)\r\n"
         "setlocal enabledelayedexpansion\r\n"
-        # Initial pause so the original process has a moment to start
-        # tearing down (icon stop, thread joins, sys.exit).
+        f'set "LOG={log_path}"\r\n'
+        'echo. > "%LOG%"\r\n'
+        'echo [%date% %time%] BusyLight self-updater starting >> "%LOG%"\r\n'
+        f'echo new_exe = {new_exe} >> "%LOG%"\r\n'
+        f'echo target  = {target} >> "%LOG%"\r\n'
+        'echo [%date% %time%] sleeping 3s for old process to teardown >> "%LOG%"\r\n'
         "timeout /t 3 /nobreak >nul\r\n"
         "set /a attempts=0\r\n"
         ":retry\r\n"
         "set /a attempts=!attempts!+1\r\n"
-        f'move /y "{new_exe}" "{target}" >nul 2>&1\r\n'
+        'echo [%date% %time%] attempt !attempts!: move >> "%LOG%"\r\n'
+        f'move /y "{new_exe}" "{target}" >> "%LOG%" 2>&1\r\n'
+        'if errorlevel 1 echo [%date% %time%]   move returned errorlevel %errorlevel% >> "%LOG%"\r\n'
         "if exist " + f'"{new_exe}"' + " (\r\n"
+        '  echo [%date% %time%]   new_exe still present after move >> "%LOG%"\r\n'
         "  if !attempts! geq 30 (\r\n"
-        "    rem Out of retries — the old exe is still locked. Leave\r\n"
-        "    rem the new exe in place so the user can move it manually.\r\n"
+        '    echo [%date% %time%] gave up after 30 retries >> "%LOG%"\r\n'
         "    goto :done\r\n"
         "  )\r\n"
         "  timeout /t 1 /nobreak >nul\r\n"
         "  goto :retry\r\n"
         ")\r\n"
+        'echo [%date% %time%] move succeeded, launching new exe >> "%LOG%"\r\n'
         f'start "" "{target}"\r\n'
+        'if errorlevel 1 echo [%date% %time%]   start returned errorlevel %errorlevel% >> "%LOG%"\r\n'
         ":done\r\n"
-        # Delete the bat itself last so its own handle is gone.
+        'echo [%date% %time%] self-updater done >> "%LOG%"\r\n'
+        # Delete the .bat itself last so its own handle is gone, but
+        # leave the .log around for diagnostics.
         f'(goto) 2>nul & del "%~f0"\r\n',
         encoding="ascii",
     )

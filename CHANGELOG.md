@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.19] - 2026-05-25
+
+### Added
+- **Update log**: the self-update `.bat` now writes every step (timestamps, `move` errorlevel, retry count, `start` errorlevel, "gave up after 30 retries" if the move never wins) to `%TEMP%\busylight-update.log`. New tray menu entry "View last update log" opens it in Notepad. When the update appears to silently do nothing, the log says exactly why — file lock that never released, antivirus quarantine, missing source path, etc.
+
 ## [0.3.18] - 2026-05-25
 
 ### Fixed
