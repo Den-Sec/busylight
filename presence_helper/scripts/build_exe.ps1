@@ -28,10 +28,12 @@ if (-not (Test-Path ".\.venv\Scripts\pyinstaller.exe")) {
 & .\.venv\Scripts\pyinstaller.exe `
   --onefile `
   --noconsole `
+  --uac-admin `
   --name BusyLightPresence `
   --paths src `
   --collect-data pystray `
   --collect-data customtkinter `
+  --collect-data webview `
   --collect-submodules serial `
   scripts\_entry.py 2>&1 | ForEach-Object { "$_" }
 

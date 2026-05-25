@@ -46,6 +46,7 @@ if ($env:TCL_LIBRARY -and $env:TK_LIBRARY) {
 & .\.venv\Scripts\pyinstaller.exe `
   --onefile `
   --noconsole `
+  --uac-admin `
   --name BusyLightSetup `
   --collect-data customtkinter `
   src\busylight_setup\main.py 2>&1 | ForEach-Object { "$_" }

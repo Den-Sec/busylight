@@ -29,9 +29,9 @@ import pystray
 from pystray import MenuItem as Item, Menu
 
 from . import __version__
-from .dashboard_window import DashboardWindow
 from .icons import status_icon
 from .settings_window import SettingsWindow
+from .webview_window import WebViewWindow
 from .updater import (
     LatestRelease,
     download_exe,
@@ -63,10 +63,9 @@ class TrayApp:
         self._icon: pystray.Icon | None = None
         self._paused = False
         self._settings = SettingsWindow(loop.cfg, on_save=self._handle_save)
-        self._dashboard = DashboardWindow(
+        self._webview = WebViewWindow(
             loop,
             on_open_settings=self._open_settings_from_dashboard,
-            on_set_state=lambda s: self._loop.force_state(s),
         )
         self._tick_thread: threading.Thread | None = None
         self._update_thread: threading.Thread | None = None
@@ -84,8 +83,7 @@ class TrayApp:
             Item(lambda _i: f"BusyLight Presence {__version__}", None,
                  enabled=False),
             Menu.SEPARATOR,
-            Item("Open dashboard", self._open_dashboard, default=True),
-            Item("Open BusyLight web UI…", self._open_busylight),
+            Item("Open BusyLight", self._open_dashboard, default=True),
             Item("Settings…", self._open_settings),
             Item(
                 lambda _i: "Resume" if self._paused else "Pause",
@@ -199,9 +197,9 @@ class TrayApp:
 
     def _open_dashboard(self, _icon, _item):
         try:
-            self._dashboard.open()
+            self._webview.open()
         except Exception as e:  # noqa: BLE001
-            log.exception("dashboard window failed: %s", e)
+            log.exception("webview window failed: %s", e)
 
     def _open_settings_from_dashboard(self) -> None:
         # Dashboard closes itself before calling us, so we can just

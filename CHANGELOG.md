@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-05-25
+
+### Changed
+- The presence app no longer ships a custom dashboard. Tray click now opens the **device's own web UI inside a native WebView2 window** — same Wi-Fi card, schedule, MQTT, OTA, etc. that you already use from a browser, just framed in a desktop window. Decision: rebuilding every card in customtkinter was visibly inferior to the web UI, and missing the Wi-Fi-add flow entirely.
+- Both `BusyLightSetup.exe` and `BusyLightPresence.exe` now ship with a UAC manifest (`--uac-admin`) so Windows prompts for elevation automatically on first launch instead of failing silently when the user double-clicks without "Run as administrator".
+
+### Added
+- WebView fallback when the device is reachable over USB but has no Wi-Fi network configured: small customtkinter window explaining the situation with a one-click "Launch setup wizard" button that spawns `BusyLightSetup.exe`.
+- Graceful "Open in browser" fallback if WebView2 runtime isn't available on the host.
+
+### Removed
+- `dashboard_window.py` (custom CTk dashboard, superseded by WebView).
+
 ## [0.3.3] - 2026-05-25
 
 ### Added
