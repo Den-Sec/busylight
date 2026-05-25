@@ -31,6 +31,7 @@ if (-not (Test-Path ".\.venv\Scripts\pyinstaller.exe")) {
   --name BusyLightPresence `
   --paths src `
   --collect-data pystray `
+  --collect-data customtkinter `
   --collect-submodules serial `
   scripts\_entry.py 2>&1 | ForEach-Object { "$_" }
 

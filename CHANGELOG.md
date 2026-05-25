@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-05-25
+
+### Added
+- Premium presence app UI: tray click now opens a dashboard window with a live LED bead (160 px, same Pillow renderer the tray icon uses), the current state in large type, a connection banner ("Connected over USB · COM3" / "Connected over Wi-Fi · busylight-xxxx.local"), one-tap state buttons (Available / Busy / In call / Away / Off), and per-state time-spent-today stats.
+- Settings window rebuilt in customtkinter: small LED bead header, live USB-detection banner, "Wi-Fi (optional)" card, polling slider with live value, "Default state" segmented control. Visual language matches the web UI (iOS-like palette, soft grey cards, JetBrains Mono for PIN/IP).
+- Shared `bead.py` Pillow renderer so the tray icon, settings header, and dashboard hero all draw the same LED bead at any size.
+
 ## [0.3.2] - 2026-05-25
 
 ### Added

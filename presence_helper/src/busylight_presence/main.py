@@ -107,6 +107,16 @@ class PresenceLoop:
         self.last_pushed_state: str | None = None
         self.last_mic_in_use: bool | None = None
 
+        # In-memory time-per-state counter for the dashboard. Reset
+        # implicitly when the process restarts; that's good enough for
+        # a "today" indicator without writing files to APPDATA on
+        # every tick.
+        self.stats: dict[str, float] = {
+            "AVAILABLE": 0.0, "BUSY": 0.0, "IN_CALL": 0.0,
+            "AWAY": 0.0, "OFF": 0.0,
+        }
+        self._stats_last_tick = time.monotonic()
+
     def stop(self, *_args) -> None:  # noqa: ANN001
         log.info("shutting down")
         self.running = False
@@ -121,7 +131,30 @@ class PresenceLoop:
                 log.warning("re-login after config change failed: %s", e)
         self.cfg = cfg
 
+    def _accumulate_stats(self) -> None:
+        now = time.monotonic()
+        elapsed = now - self._stats_last_tick
+        self._stats_last_tick = now
+        state = self.last_pushed_state
+        if state in self.stats:
+            self.stats[state] += elapsed
+
+    def force_state(self, state: str) -> None:
+        """Push a state directly from the UI (dashboard quick buttons).
+
+        The mic monitor will override it back to IN_CALL when a call
+        starts; the user expects that on the BusyLight, same as the
+        web UI's tile buttons.
+        """
+        try:
+            self.client.set_state(state)
+            self.last_manual_state = state
+            self.last_pushed_state = state
+        except (BusyLightAuthError, BusyLightNetworkError) as e:
+            log.warning("force_state %s failed: %s", state, e)
+
     def tick(self) -> None:
+        self._accumulate_stats()
         usage = microphone_in_use()
         try:
             current = self.client.get_state()

@@ -1,38 +1,45 @@
-"""Tiny Tkinter settings window — host, PIN, poll interval.
+"""Premium settings window for BusyLight Presence.
 
-Opens on demand from the tray menu. Closes itself on save or cancel
-without exiting the helper. Designed to feel like a one-page config
-panel: minimal, no menu bar, no resize.
+customtkinter, coherent with the dashboard and the web UI:
+  - LED bead header (the same Pillow-rendered bead the dashboard uses)
+  - Live USB-detection banner (green if a port is present, amber if not)
+  - "Wi-Fi" card with host + PIN — flagged optional because USB-only
+    setups don't need either
+  - "Polling" slider
+  - "Default state" segmented control
 """
 
 from __future__ import annotations
 
+import logging
 import tkinter as tk
-from tkinter import messagebox, ttk
-from typing import Callable
+from typing import Callable, Optional
 
+import customtkinter as ctk
+
+from .bead import render_bead
 from .config import PresenceConfig
 from .serial_client import find_busylight_ports
 
+log = logging.getLogger(__name__)
+
+
+_VALID_DEFAULT_STATES = ("AVAILABLE", "BUSY", "AWAY", "IN_CALL")
+
 
 class SettingsWindow:
-    """Modal-ish Toplevel that edits a `PresenceConfig` in place."""
-
     def __init__(
         self,
         cfg: PresenceConfig,
         on_save: Callable[[PresenceConfig], None],
+        on_closed: Optional[Callable[[], None]] = None,
     ) -> None:
         self.cfg = cfg
         self.on_save = on_save
-        self._root: tk.Tk | None = None
+        self.on_closed = on_closed
+        self._root: Optional[ctk.CTk] = None
 
     def open(self) -> None:
-        # Tkinter is not thread-safe: must run on the same thread that
-        # created the Tk root. pystray invokes menu callbacks on its
-        # main thread on Windows, which is where we end up, so a
-        # blocking `mainloop()` here is fine — the tray menu just
-        # waits until the user closes the settings window.
         if self._root is not None:
             try:
                 if self._root.winfo_exists():
@@ -41,122 +48,211 @@ class SettingsWindow:
                 pass
             self._root = None
 
-        root = tk.Tk()
+        ctk.set_appearance_mode("light")
+        ctk.set_default_color_theme("blue")
+
+        root = ctk.CTk()
         root.title("BusyLight Presence — Settings")
-        root.geometry("440x400")
+        root.geometry("470x720")
         root.resizable(False, False)
-        try:
-            # Use the system default theme tweaks for a less Tk-1990 look.
-            ttk.Style().theme_use("vista")
-        except tk.TclError:
-            pass
 
-        outer = ttk.Frame(root, padding=18)
-        outer.pack(fill="both", expand=True)
+        outer = ctk.CTkFrame(root, fg_color="transparent")
+        outer.pack(fill="both", expand=True, padx=24, pady=22)
 
-        ttk.Label(
-            outer,
-            text="BusyLight Presence",
-            font=("Segoe UI Semibold", 13),
-        ).pack(anchor="w")
-        ttk.Label(
+        # ---- Header: small bead + title -----------------------------
+        head = ctk.CTkFrame(outer, fg_color="transparent")
+        head.pack(fill="x")
+
+        bead_img = render_bead("available", 40)
+        ctk_bead = ctk.CTkImage(light_image=bead_img, size=(40, 40))
+        bead_lbl = ctk.CTkLabel(head, text="", image=ctk_bead)
+        bead_lbl.image = ctk_bead
+        bead_lbl.pack(side="left")
+
+        ctk.CTkLabel(
+            head,
+            text="Settings",
+            font=ctk.CTkFont("Segoe UI Semibold", 18),
+            anchor="w",
+        ).pack(side="left", padx=(12, 0))
+
+        ctk.CTkLabel(
             outer,
             text=(
                 "Tells your BusyLight when any application starts "
                 "using the microphone."
             ),
-            foreground="#555",
+            font=ctk.CTkFont("Segoe UI", 11),
+            text_color="#5d6066",
             wraplength=400,
+            anchor="w",
             justify="left",
-        ).pack(anchor="w", pady=(0, 10))
+        ).pack(fill="x", pady=(6, 18))
 
-        # Live USB detection banner: tells the user whether they need
-        # to fill in host/PIN at all.
+        # ---- Live USB banner ----------------------------------------
         usb_ports = find_busylight_ports()
         if usb_ports:
             banner_text = (
-                f"Device detected over USB ({usb_ports[0]}). "
+                f"Device detected over USB ({usb_ports[0]}).\n"
                 "Wi-Fi settings below are optional."
             )
-            banner_fg = "#16744a"  # readable green
+            banner_color = "#16744a"
+            banner_bg = "#e6f4ec"
         else:
             banner_text = (
-                "No USB device detected. Fill in Wi-Fi host + PIN "
-                "below, or plug in the cable."
+                "No USB device detected.\n"
+                "Fill in Wi-Fi host + PIN below, or plug in the cable."
             )
-            banner_fg = "#a35a00"  # amber
+            banner_color = "#a35a00"
+            banner_bg = "#fdf3e1"
 
-        ttk.Label(
-            outer,
+        banner = ctk.CTkFrame(outer, corner_radius=10, fg_color=banner_bg)
+        banner.pack(fill="x")
+        ctk.CTkLabel(
+            banner,
             text=banner_text,
-            foreground=banner_fg,
-            wraplength=400,
+            font=ctk.CTkFont("Segoe UI", 11),
+            text_color=banner_color,
             justify="left",
-        ).pack(anchor="w", pady=(0, 14))
+            anchor="w",
+            wraplength=380,
+        ).pack(fill="x", padx=14, pady=10)
 
+        # ---- Wi-Fi card --------------------------------------------
         host_var = tk.StringVar(value=self.cfg.host)
         pin_var = tk.StringVar(value=self.cfg.pin)
-        poll_var = tk.StringVar(value=str(self.cfg.poll_seconds))
 
-        def add_row(label: str, var: tk.StringVar, show: str = "") -> ttk.Entry:
-            ttk.Label(outer, text=label).pack(anchor="w")
-            entry = ttk.Entry(outer, textvariable=var, show=show)
-            entry.pack(fill="x", pady=(2, 10))
-            return entry
+        wifi_card = self._card(outer, "Wi-Fi (optional)")
+        ctk.CTkLabel(
+            wifi_card,
+            text="BusyLight host (mDNS or IP)",
+            font=ctk.CTkFont("Segoe UI", 11),
+            text_color="#5d6066",
+            anchor="w",
+        ).pack(fill="x", padx=14, pady=(0, 2))
+        ctk.CTkEntry(
+            wifi_card,
+            textvariable=host_var,
+            font=ctk.CTkFont("JetBrains Mono", 12),
+            placeholder_text="busylight-XXXX.local or 192.168.x.x",
+            height=34,
+        ).pack(fill="x", padx=14, pady=(0, 10))
 
-        add_row("BusyLight host (mDNS or IP) — optional", host_var)
-        add_row("Access PIN — optional", pin_var, show="•")
-        add_row("Poll interval (seconds)", poll_var)
+        ctk.CTkLabel(
+            wifi_card,
+            text="Access PIN",
+            font=ctk.CTkFont("Segoe UI", 11),
+            text_color="#5d6066",
+            anchor="w",
+        ).pack(fill="x", padx=14, pady=(0, 2))
+        ctk.CTkEntry(
+            wifi_card,
+            textvariable=pin_var,
+            show="•",
+            font=ctk.CTkFont("JetBrains Mono", 12),
+            placeholder_text="4–8 digits",
+            height=34,
+        ).pack(fill="x", padx=14, pady=(0, 14))
 
-        msg_var = tk.StringVar(value="")
-        ttk.Label(outer, textvariable=msg_var, foreground="#a13").pack(
-            anchor="w", pady=(2, 8)
+        # ---- Polling card ------------------------------------------
+        poll_var = tk.DoubleVar(value=float(self.cfg.poll_seconds))
+        poll_card = self._card(outer, "Polling")
+        poll_row = ctk.CTkFrame(poll_card, fg_color="transparent")
+        poll_row.pack(fill="x", padx=14, pady=(0, 12))
+
+        poll_value_lbl = ctk.CTkLabel(
+            poll_row,
+            text=f"{poll_var.get():.1f}s",
+            font=ctk.CTkFont("JetBrains Mono", 12),
+            text_color="#3a3d42",
+            width=50,
         )
+        poll_value_lbl.pack(side="right")
 
-        btn_row = ttk.Frame(outer)
-        btn_row.pack(fill="x")
+        def _poll_changed(v: float) -> None:
+            poll_var.set(round(v, 1))
+            poll_value_lbl.configure(text=f"{v:.1f}s")
+
+        slider = ctk.CTkSlider(
+            poll_row,
+            from_=0.5, to=5.0, number_of_steps=45,
+            command=_poll_changed,
+        )
+        slider.set(poll_var.get())
+        slider.pack(side="left", fill="x", expand=True, padx=(0, 12))
+
+        # ---- Default state card ------------------------------------
+        default_state_var = tk.StringVar(value=self.cfg.default_state)
+        ds_card = self._card(outer, "Default state when mic is idle")
+        ds_row = ctk.CTkFrame(ds_card, fg_color="transparent")
+        ds_row.pack(fill="x", padx=14, pady=(0, 14))
+        ctk.CTkSegmentedButton(
+            ds_row,
+            values=["AVAILABLE", "BUSY", "AWAY"],
+            variable=default_state_var,
+            font=ctk.CTkFont("Segoe UI Semibold", 10),
+        ).pack(fill="x")
+
+        # ---- Error message slot ------------------------------------
+        msg_var = tk.StringVar(value="")
+        ctk.CTkLabel(
+            outer,
+            textvariable=msg_var,
+            font=ctk.CTkFont("Segoe UI", 11),
+            text_color="#c0392b",
+        ).pack(anchor="w", pady=(8, 6))
+
+        # ---- Actions -----------------------------------------------
+        btn_row = ctk.CTkFrame(outer, fg_color="transparent")
+        btn_row.pack(fill="x", pady=(4, 0))
 
         def do_save() -> None:
             try:
                 new_cfg = PresenceConfig(
                     host=host_var.get().strip(),
                     pin=pin_var.get().strip(),
-                    poll_seconds=float(poll_var.get().strip() or "2"),
-                    default_state=self.cfg.default_state,
+                    poll_seconds=float(poll_var.get()),
+                    default_state=default_state_var.get(),
                     config_path=self.cfg.config_path,
                 )
                 new_cfg.ensure_valid()
             except (ValueError, TypeError) as e:
                 msg_var.set(str(e))
                 return
-
             try:
                 new_cfg.save()
             except OSError as e:
                 msg_var.set(f"could not save: {e}")
                 return
-
             self.on_save(new_cfg)
             self.cfg = new_cfg
-            msg_var.set("Saved.")
-            # Auto-close (and let mainloop return to the tray) shortly
-            # after, giving the user a beat to see the "Saved." flash.
-            root.after(600, root.destroy)
+            msg_var.set("")
+            root.after(300, root.destroy)
 
-        def _cancel() -> None:
-            try:
-                root.destroy()
-            except tk.TclError:
-                pass
+        ctk.CTkButton(
+            btn_row,
+            text="Cancel",
+            fg_color="#e8eaee",
+            hover_color="#dcdee2",
+            text_color="#2a2d33",
+            font=ctk.CTkFont("Segoe UI Semibold", 11),
+            height=36,
+            corner_radius=9,
+            command=root.destroy,
+        ).pack(side="right", padx=(8, 0))
 
-        ttk.Button(btn_row, text="Cancel", command=_cancel).pack(
-            side="right", padx=(8, 0)
-        )
-        ttk.Button(btn_row, text="Save", command=do_save).pack(side="right")
+        ctk.CTkButton(
+            btn_row,
+            text="Save",
+            fg_color="#34c759",
+            hover_color="#2eaa4d",
+            text_color="#ffffff",
+            font=ctk.CTkFont("Segoe UI Semibold", 11),
+            height=36,
+            corner_radius=9,
+            command=do_save,
+        ).pack(side="right")
 
-        # Closing the X destroys the window (mainloop exits), but the
-        # helper as a whole keeps running because pystray owns the
-        # process lifecycle.
         def _on_close() -> None:
             try:
                 root.destroy()
@@ -164,12 +260,15 @@ class SettingsWindow:
                 pass
 
         root.protocol("WM_DELETE_WINDOW", _on_close)
-        # Also exit the mainloop on save (we already withdraw in
-        # do_save's `after`; calling destroy here as well keeps the
-        # Toplevel from leaking event handlers).
         self._root = root
         root.mainloop()
         self._root = None
+
+        if self.on_closed:
+            try:
+                self.on_closed()
+            except Exception as e:  # noqa: BLE001
+                log.debug("on_closed callback raised: %s", e)
 
     def close(self) -> None:
         if self._root is not None:
@@ -178,3 +277,21 @@ class SettingsWindow:
             except tk.TclError:
                 pass
         self._root = None
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+    def _card(self, parent: ctk.CTkFrame, title: str) -> ctk.CTkFrame:
+        """A grey rounded section with a small section title above it."""
+        ctk.CTkLabel(
+            parent,
+            text=title,
+            font=ctk.CTkFont("Segoe UI Semibold", 11),
+            text_color="#5d6066",
+            anchor="w",
+        ).pack(fill="x", pady=(14, 6))
+        card = ctk.CTkFrame(parent, corner_radius=12, fg_color="#f6f7f9")
+        card.pack(fill="x")
+        # Spacer so the first widget inside isn't flush against the top edge.
+        ctk.CTkLabel(card, text="", height=2).pack()
+        return card
