@@ -6,7 +6,11 @@ namespace {
 unsigned long intervalFor(BusyStatus state) {
   switch (state) {
     case STATUS_IN_CALL:
-      return 250;
+      // 500 ms half-cycle => 1 Hz blink. 250 ms was visually almost
+      // indistinguishable from BUSY (solid red) because the eye
+      // smooths fast red oscillation; users reported "IN_CALL looks
+      // the same as BUSY".
+      return 500;
     case STATUS_AWAY:
       return 900;
     case STATUS_WIFI_ERROR:

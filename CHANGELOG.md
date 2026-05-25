@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.12] - 2026-05-25
+
+### Fixed
+- IN_CALL blink interval was 250 ms (4 Hz red). At that rate the eye smooths the oscillation and IN_CALL looked indistinguishable from BUSY (solid red). Slowed to 500 ms (1 Hz), which is clearly distinct from BUSY but still reads as "active / attention" rather than "idle".
+- `BUSYLIGHT_VERSION` macro in `platformio.ini` was still "0.3.10" when v0.3.11 firmware artifacts were uploaded (the v0.3.11 release re-used the v0.3.10 binary because only the presence helper had changed). Devices flashed from v0.3.11 reported "0.3.10" in the web UI Settings tab and never stopped seeing "update available" prompts. Bumped to "0.3.12" with a fresh build so the version inside the binary matches the release tag.
+
+### Notes on the `signature_invalid` problem
+The embedded public key and the private key used to sign releases are confirmed to be a matched RSA-2048 pair, so the failure is **not** a keypair mismatch. On Dennis's PC it persists across retries on the USB-OTA path, but the factory reflash (esptool write_flash) succeeds — pointing at byte-level corruption somewhere in the USB-CDC stream that only affects the SHA-256 used to verify. The auto-fallback added in v0.3.11 covers it transparently for now; a future release will surface the device-side SHA so we can diagnose without guessing.
+
 ## [0.3.11] - 2026-05-25
 
 ### Changed
