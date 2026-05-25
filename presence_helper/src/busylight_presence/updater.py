@@ -150,9 +150,16 @@ def _parse_version(s: str) -> tuple[int, int, int]:
 # Download + self-replace
 # ---------------------------------------------------------------------------
 
-def download_exe(release: LatestRelease, dest_dir: Optional[Path] = None) -> Path:
-    """Download the BusyLightPresence.exe asset to a temp location and
-    return the path. Raises on failure so the tray can show an error.
+def download_exe(
+    release: LatestRelease,
+    dest_dir: Optional[Path] = None,
+    progress_cb=None,
+) -> Path:
+    """Download the BusyLightPresence.exe asset to a temp location.
+
+    `progress_cb(written, total)` is called as bytes arrive, so the
+    caller can drive a progress bar. Total is taken from the
+    Content-Length header (or the asset metadata as a fallback).
     """
     if release.exe_asset is None:
         raise RuntimeError("release has no BusyLightPresence.exe asset")
@@ -166,12 +173,26 @@ def download_exe(release: LatestRelease, dest_dir: Optional[Path] = None) -> Pat
         headers={"User-Agent": f"busylight-presence/{_self_version()}"},
     )
     with urllib.request.urlopen(req, timeout=120) as resp:
+        # Prefer the server-reported Content-Length; fall back to the
+        # asset metadata GitHub provides if it's missing.
+        total = (
+            int(resp.headers.get("Content-Length") or 0)
+            or release.exe_asset.size
+            or 0
+        )
+        written = 0
         with open(target, "wb") as f:
             while True:
                 chunk = resp.read(64 * 1024)
                 if not chunk:
                     break
                 f.write(chunk)
+                written += len(chunk)
+                if progress_cb:
+                    try:
+                        progress_cb(written, total)
+                    except Exception:  # noqa: BLE001
+                        pass
     log.info("downloaded %s (%d bytes)", target, target.stat().st_size)
     return target
 

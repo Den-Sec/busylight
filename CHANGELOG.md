@@ -7,7 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.3.13] - 2026-05-25
+## [0.3.14] - 2026-05-25
+
+### Fixed
+- **Tray menu stopped responding while the dashboard was open**: WebView2 and pystray both want the main thread for their message loop on Windows, so opening the dashboard blocked tray right-clicks until the WebView window closed. The dashboard now runs on a worker thread, leaving the tray reactive. Clicking "Open BusyLight" a second time with the window already open is a no-op (Windows brings the existing one to front).
+- **Update flow had almost no feedback**: a single "Downloading…" balloon, then silence, then UAC prompted out of nowhere — easy to read as "nothing happened". Installing now shows a modal progress dialog with a real progress bar, MB-of-MB counter, current step ("Downloading…", "Restarting…"), and an explicit "Approve the Windows UAC prompt when it appears" hint before the relaunch.
+
+
 
 ### Fixed
 - **IN_CALL reverted after ~2s when set manually**: the presence loop unconditionally treated IN_CALL as a mic-driven state. When a user clicked IN_CALL in the web UI and the mic was idle, the next tick pushed `last_manual_state` over the top, reverting the LED. Now the loop distinguishes between "presence-pushed IN_CALL (mic was busy)" and "user-set IN_CALL (anywhere else)" via `last_pushed_state` tracking and only reverts the first kind.

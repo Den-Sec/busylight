@@ -31,6 +31,7 @@ from pystray import MenuItem as Item, Menu
 from . import __version__
 from .icons import status_icon
 from .settings_window import SettingsWindow
+from .update_progress_window import UpdateProgressWindow
 from .webui_bridge import WebUiBridge
 from .webview_window import open_device_webui
 from .updater import (
@@ -75,6 +76,8 @@ class TrayApp:
         self._update_lock = threading.Lock()
         self._pending_firmware_update: Optional[LatestRelease] = None
         self._firmware_update_lock = threading.Lock()
+        self._webview_thread: Optional[threading.Thread] = None
+        self._webview_open = False
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -207,11 +210,35 @@ class TrayApp:
         # The "dashboard" is now the firmware's own web UI, served by
         # the local bridge over USB serial. Same exact look and feel
         # as the device's HTTP UI, but doesn't require Wi-Fi.
+        #
+        # Run the WebView on a worker thread so it doesn't block
+        # pystray's main-thread message loop — otherwise right-click
+        # on the tray icon stops responding while the dashboard is
+        # open (both WebView2 and pystray want exclusive ownership
+        # of the main thread on Windows).
+        if self._webview_open:
+            # Already showing; let the OS bring it to front rather
+            # than spawning a second window.
+            return
         try:
             url = self._bridge.start()
-            open_device_webui(url)
         except Exception as e:  # noqa: BLE001
-            log.exception("web UI failed: %s", e)
+            log.exception("bridge start failed: %s", e)
+            return
+
+        def runner() -> None:
+            self._webview_open = True
+            try:
+                open_device_webui(url)
+            except Exception as e:  # noqa: BLE001
+                log.exception("webview failed: %s", e)
+            finally:
+                self._webview_open = False
+
+        self._webview_thread = threading.Thread(
+            target=runner, daemon=True, name="busylight-webview",
+        )
+        self._webview_thread.start()
 
     def _open_settings_from_dashboard(self) -> None:
         # Dashboard closes itself before calling us, so we can just
@@ -378,17 +405,47 @@ class TrayApp:
         ).start()
 
     def _install_update(self, release: LatestRelease) -> None:
+        # Modal progress dialog so the user sees what's going on
+        # instead of just a brief balloon and a silent UAC prompt.
+        progress = UpdateProgressWindow(
+            title=f"Installing BusyLight {release.tag}"
+        )
+        progress.start()
+        progress.set_message(
+            f"Downloading {release.tag} from GitHub…"
+        )
         try:
-            self._notify(
-                "Downloading BusyLight update",
-                f"Fetching {release.tag} from GitHub…",
-            )
-            new_exe = download_exe(release)
+            def cb(written: int, total: int) -> None:
+                if total > 0:
+                    progress.set_progress(written / total)
+                    mb_done = written / (1024 * 1024)
+                    mb_tot = total / (1024 * 1024)
+                    progress.set_message(
+                        f"Downloading {release.tag} from GitHub…"
+                        f"\n{mb_done:.1f} MB of {mb_tot:.1f} MB"
+                    )
+                else:
+                    progress.set_indeterminate()
+            new_exe = download_exe(release, progress_cb=cb)
         except Exception as e:  # noqa: BLE001
             log.exception("update download failed: %s", e)
+            progress.set_message(f"Download failed: {e}")
+            progress.set_progress(0.0)
+            import time
+            time.sleep(3.0)
+            progress.close()
             self._notify("Update failed", str(e))
             return
+
         try:
+            progress.set_progress(1.0)
+            progress.set_message(
+                "Download complete. Restarting BusyLight…\n"
+                "Approve the Windows UAC prompt when it appears."
+            )
+            import time
+            time.sleep(1.5)
+            progress.close()
             self._stop_event.set()  # let worker threads wind down
             install_and_restart(new_exe)
         except SystemExit:
