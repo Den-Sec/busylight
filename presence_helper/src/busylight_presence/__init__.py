@@ -6,4 +6,4 @@ BusyLight to switch to IN_CALL while the mic is in use. Restores the
 previous manual state when the call ends.
 """
 
-__version__ = "0.3.17"
+__version__ = "0.3.18"

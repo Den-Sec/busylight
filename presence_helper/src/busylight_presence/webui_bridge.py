@@ -163,6 +163,11 @@ class _BridgeHandler(BaseHTTPRequestHandler):
             return {}
 
     def _serial(self) -> Optional[SerialClient]:
+        if WebUiBridge.suspended:
+            # An OTA stream is in flight on the COM port; refusing to
+            # open it here keeps the dashboard's auto-refresh polling
+            # from racing the OTA reader on the same handle.
+            return None
         ports = find_busylight_ports()
         if not ports:
             return None
@@ -340,10 +345,21 @@ class _BridgeHandler(BaseHTTPRequestHandler):
 class WebUiBridge:
     """Spin up the bridge HTTP server on `127.0.0.1:<ephemeral>`."""
 
+    # Class-level flag because BaseHTTPRequestHandler instances are
+    # short-lived (one per request) and have no clean way to reach an
+    # instance attribute. Setting this to True makes every Serial-
+    # touching endpoint reply 503 instantly without grabbing the COM
+    # port — useful while an OTA stream is in flight.
+    suspended: bool = False
+
     def __init__(self) -> None:
         self._server: Optional[ThreadingHTTPServer] = None
         self._thread: Optional[threading.Thread] = None
         self.port: int = 0
+
+    @classmethod
+    def set_suspended(cls, value: bool) -> None:
+        cls.suspended = bool(value)
 
     def start(self) -> str:
         if self._server is not None:

@@ -551,13 +551,15 @@ class TrayApp:
             self._notify("BusyLight update", f"Download failed: {e}")
             return
 
-        # 4. Push over serial. The presence loop talks to the device
-        #    too — pause it so we don't fight for the COM port.
+        # 4. Push over serial. The presence loop AND the WebView
+        #    bridge can both open the COM port — pause them both so
+        #    they don't race the OTA reader for the handle.
         self._notify(
             "BusyLight update",
             "Flashing device over USB — please don't unplug the cable…",
         )
         self._paused = True
+        WebUiBridge.set_suspended(True)
         try:
             sc = SerialClient(port=ports[0])
             sc.update_firmware(bin_path, sig_path)
@@ -575,6 +577,7 @@ class TrayApp:
                     "reflash automatically…",
                 )
                 self._paused = False
+                WebUiBridge.set_suspended(False)
                 self._factory_reflash()
                 return
             self._notify("BusyLight update", f"Firmware flash failed: {msg}")
@@ -584,6 +587,7 @@ class TrayApp:
             return
         finally:
             self._paused = False
+            WebUiBridge.set_suspended(False)
 
         # 5. Device reboots into the new firmware; the tray reconnects
         #    automatically on the next poll tick.
@@ -741,6 +745,7 @@ class TrayApp:
             "Re-flashing device — don't unplug the cable…",
         )
         self._paused = True
+        WebUiBridge.set_suspended(True)
         try:
             import esptool
             args = [
@@ -757,13 +762,13 @@ class TrayApp:
             ]
             esptool.main(args)
         except SystemExit as e:
-            # esptool calls sys.exit on errors; treat non-zero as failure.
             if getattr(e, "code", 0):
                 self._notify(
                     "BusyLight reflash",
                     f"esptool failed (exit {e.code}).",
                 )
                 self._paused = False
+                WebUiBridge.set_suspended(False)
                 return
         except Exception as e:  # noqa: BLE001
             self._notify(
@@ -771,9 +776,11 @@ class TrayApp:
                 f"Reflash failed: {e}",
             )
             self._paused = False
+            WebUiBridge.set_suspended(False)
             return
 
         self._paused = False
+        WebUiBridge.set_suspended(False)
         with self._firmware_update_lock:
             self._pending_firmware_update = None
         self._notify(

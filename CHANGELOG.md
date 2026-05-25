@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.18] - 2026-05-25
+
+### Fixed
+- **OTA failed with "no JSON reply within timeout" when the dashboard was open in the background**: the bundled web UI polls `/api/state` every couple of seconds. That polling went through the bridge → opened the COM port → raced the live OTA reader for the same handle → OTA `readline()` returned empty → timeout. The presence loop already paused itself during OTA, but the bridge didn't, so anything that polled the dashboard kept opening the port.
+  - The bridge now has a `suspended` flag. Both `_firmware_ota_via_usb` and `_factory_reflash` flip it on before they touch the COM port and back off when done. While suspended, every Serial-touching endpoint returns 503 immediately without opening the port, so dashboard polling can't interfere with the OTA stream.
+
 ## [0.3.17] - 2026-05-25
 
 ### Fixed
