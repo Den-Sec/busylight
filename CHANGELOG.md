@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.5] - 2026-05-25
+
+### Changed
+- **Dashboard is now the default landing page again** (back from the WebView-as-default detour). Tray click always opens the dashboard, which works whether or not the device is on Wi-Fi. No more being forced into the setup wizard when Wi-Fi isn't configured.
+
+### Added
+- "Add Wi-Fi" button right on the dashboard: opens a small dialog (SSID + password) that posts the new network to the device over USB via the new firmware `wifi_add` command. Adds to the saved list, doesn't reset anything else.
+- "Open device web UI" button on the dashboard: enabled only when the device's `get_info` reports `wifi=true` and an IP. Opens the WebView (or the system browser as fallback). Pure opt-in, never forced.
+- Firmware: new `{"cmd":"wifi_add","ssid":"...","password":"..."}` runtime command — same semantics as `POST /api/wifi` but reachable over USB.
+
+### Fixed
+- Custom dashboard was removed in 0.3.4 in favour of a WebView-only flow that forced the user into the setup wizard when Wi-Fi wasn't configured. That UX was wrong: the desktop app must work via USB alone, with Wi-Fi being an optional convenience. Restored the dashboard and made Wi-Fi-adding a button rather than a forced flow.
+
 ## [0.3.4] - 2026-05-25
 
 ### Changed

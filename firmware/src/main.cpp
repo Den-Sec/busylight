@@ -494,6 +494,37 @@ void handleSerialProvisioning() {
     emitJson(buf);
     return;
   }
+  if (cmd == "wifi_add") {
+    // Add a Wi-Fi network without resetting other config (PIN,
+    // existing networks). Same semantics as POST /api/wifi over
+    // HTTP but reachable from the desktop app over USB.
+    if (!in["ssid"].is<const char*>()) {
+      emitJson("{\"ok\":false,\"error\":\"ssid_missing\"}");
+      return;
+    }
+    String ssid = String(static_cast<const char*>(in["ssid"]));
+    ssid.trim();
+    String password = in["password"].is<const char*>()
+                          ? String(static_cast<const char*>(in["password"]))
+                          : "";
+    if (ssid.length() == 0 || ssid.length() > 32) {
+      emitJson("{\"ok\":false,\"error\":\"ssid_length\"}");
+      return;
+    }
+    if (password.length() > 63) {
+      emitJson("{\"ok\":false,\"error\":\"password_length\"}");
+      return;
+    }
+    if (!gStore.addNetwork(ssid, password)) {
+      emitJson("{\"ok\":false,\"error\":\"save_failed\"}");
+      return;
+    }
+    gConfig.networks = gStore.loadNetworks();
+    gConfig.configured = !gConfig.networks.empty();
+    gConfig.wifiListDirty = true;
+    emitJson("{\"ok\":true,\"event\":\"wifi_added\"}");
+    return;
+  }
   if (cmd == "ota_begin") {
     if (!in["size"].is<int>() && !in["size"].is<uint32_t>()) {
       emitJson("{\"ok\":false,\"error\":\"size_missing\"}");

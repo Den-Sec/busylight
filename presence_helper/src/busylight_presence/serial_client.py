@@ -172,6 +172,23 @@ class SerialClient:
         about itself (hostname, fw version, wifi up/down, IP)."""
         return self._roundtrip({"cmd": "get_info"})
 
+    def wifi_add(self, ssid: str, password: str = "") -> None:
+        """Add a Wi-Fi network without disturbing the rest of config.
+
+        Same semantics as the HTTP POST /api/wifi but reachable when
+        the device has no Wi-Fi yet (chicken-and-egg case for the
+        desktop app).
+        """
+        resp = self._roundtrip({
+            "cmd": "wifi_add",
+            "ssid": ssid,
+            "password": password,
+        })
+        if not resp.get("ok"):
+            raise SerialProtocolError(
+                resp.get("error") or "wifi_add rejected"
+            )
+
     # ------------------------------------------------------------------
     # OTA over serial — see firmware/include/ota_serial.h for protocol.
     # ------------------------------------------------------------------
