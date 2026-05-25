@@ -55,6 +55,11 @@ constexpr const char* kTimezoneSpec =
 bool gServerStarted = false;
 bool gLittleFsOk = false;
 bool gWifiWasConnected = false;
+// Tracks whether networkingTick has already pushed the WIFI_ERROR
+// overlay onto the LED. We use a guard so the LED engine isn't
+// reset on every loop iteration (which would freeze the blink
+// pattern and instantly override any user-set state).
+bool gErrorLedApplied = false;
 
 String gDeviceHostname = "busylight";
 
@@ -224,7 +229,18 @@ void networkingTick() {
   }
 
   if (!gConfig.configured || gConfig.networks.empty()) {
-    gLed.setState(STATUS_WIFI_ERROR);
+    // One-shot LED set: networkingTick runs every loop iteration
+    // (~200 Hz). Calling `setState(WIFI_ERROR)` here unconditionally
+    // hammered the LED engine — `lastToggleMs_` was reset on every
+    // call so the blink never advanced (LED stuck solid red),
+    // and any user-set state from the web UI / Serial was instantly
+    // overridden. Apply WIFI_ERROR once and leave the LED engine
+    // alone after that; the engine's `tick()` is what produces the
+    // alternating red/green pattern.
+    if (!gErrorLedApplied) {
+      gLed.setState(STATUS_WIFI_ERROR);
+      gErrorLedApplied = true;
+    }
     return;
   }
 
@@ -239,6 +255,13 @@ void networkingTick() {
       MDNS.end();
       MDNS.begin(gDeviceHostname.c_str());
       gWifiWasConnected = true;
+      // Coming back from a WIFI_ERROR overlay: restore whatever
+      // state the user last asked for instead of leaving the
+      // LED on the error pattern.
+      if (gErrorLedApplied) {
+        gLed.setState(gConfig.lastState);
+        gErrorLedApplied = false;
+      }
     }
     startServerIfNeeded();
     return;
@@ -253,7 +276,10 @@ void networkingTick() {
     gWifi.kicked = false;
   }
 
-  gLed.setState(STATUS_WIFI_ERROR);
+  if (!gErrorLedApplied) {
+    gLed.setState(STATUS_WIFI_ERROR);
+    gErrorLedApplied = true;
+  }
 
   unsigned long now = millis();
   if (!gWifi.kicked) {

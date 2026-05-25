@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.10] - 2026-05-25
+
+### Fixed (the actual LED bug)
+- **`networkingTick` was hammering the LED with `setState(WIFI_ERROR)` on every loop iteration** (~200 Hz). Two effects:
+  1. The LED blink pattern never advanced — every iteration reset `lastToggleMs_` to 0, so the engine never finished the 400 ms interval needed to toggle. Result: solid red instead of the alternating red/green WIFI_ERROR pattern.
+  2. Any user-set state from the web UI or Serial was instantly overwritten on the next loop tick — so clicking AVAILABLE in the web UI flashed the LED green for a few ms before networkingTick reverted it to (solid) WIFI_ERROR red.
+- Fix: track whether the overlay has already been applied (`gErrorLedApplied`) and only call `setState` once per transition. On reconnect, restore `gConfig.lastState` from NVS instead of leaving the LED on the error pattern.
+- The v0.3.9 LED initial-outputs fix was correct but insufficient on its own — the real fault was the per-tick re-apply in networkingTick.
+
 ## [0.3.9] - 2026-05-25
 
 ### Fixed
