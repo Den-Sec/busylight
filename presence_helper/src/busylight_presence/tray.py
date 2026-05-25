@@ -82,6 +82,7 @@ class TrayApp:
                  enabled=False),
             Menu.SEPARATOR,
             Item("Open BusyLight", self._open_dashboard, default=True),
+            Item("Update firmware via USB…", self._on_firmware_ota_usb),
             Item("Settings…", self._open_settings),
             Item(
                 lambda _i: "Resume" if self._paused else "Pause",
@@ -328,3 +329,105 @@ class TrayApp:
             self._icon.notify(message, title=title)
         except Exception as e:  # noqa: BLE001
             log.debug("notify failed: %s", e)
+
+    # ------------------------------------------------------------------
+    # Firmware OTA over USB
+    # ------------------------------------------------------------------
+    def _on_firmware_ota_usb(self, _icon, _item) -> None:
+        threading.Thread(
+            target=self._firmware_ota_via_usb,
+            daemon=True,
+        ).start()
+
+    def _firmware_ota_via_usb(self) -> None:
+        """Download the latest signed firmware from GitHub and flash it
+        to the device over the USB cable. No Wi-Fi required.
+        """
+        import tempfile
+        import urllib.request
+        from pathlib import Path
+
+        from .serial_client import (
+            SerialClient,
+            SerialProtocolError,
+            SerialUnavailable,
+            find_busylight_ports,
+        )
+
+        # 1. Find the device.
+        ports = find_busylight_ports()
+        if not ports:
+            self._notify(
+                "BusyLight update",
+                "No USB device — plug in the cable and try again.",
+            )
+            return
+
+        # 2. Find the latest release on GitHub.
+        try:
+            release = fetch_latest_release()
+        except Exception as e:  # noqa: BLE001
+            self._notify("BusyLight update", f"GitHub lookup failed: {e}")
+            return
+        if release is None:
+            self._notify(
+                "BusyLight update",
+                "Couldn't reach GitHub — check your internet connection.",
+            )
+            return
+        if release.firmware_asset is None or release.signature_asset is None:
+            self._notify(
+                "BusyLight update",
+                f"Release {release.tag} has no firmware asset.",
+            )
+            return
+
+        # 3. Download .bin + .sig to %TEMP%.
+        self._notify(
+            "BusyLight update",
+            f"Downloading firmware {release.tag}…",
+        )
+        try:
+            dest = Path(tempfile.gettempdir()) / "busylight-update"
+            dest.mkdir(parents=True, exist_ok=True)
+            bin_path = dest / release.firmware_asset.name
+            sig_path = dest / release.signature_asset.name
+            for asset, target in (
+                (release.firmware_asset, bin_path),
+                (release.signature_asset, sig_path),
+            ):
+                req = urllib.request.Request(
+                    asset.url,
+                    headers={"User-Agent": f"busylight-presence/{__version__}"},
+                )
+                with urllib.request.urlopen(req, timeout=120) as resp:
+                    target.write_bytes(resp.read())
+        except Exception as e:  # noqa: BLE001
+            self._notify("BusyLight update", f"Download failed: {e}")
+            return
+
+        # 4. Push over serial. The presence loop talks to the device
+        #    too — pause it so we don't fight for the COM port.
+        self._notify(
+            "BusyLight update",
+            "Flashing device over USB — please don't unplug the cable…",
+        )
+        self._paused = True
+        try:
+            sc = SerialClient(port=ports[0])
+            sc.update_firmware(bin_path, sig_path)
+        except (SerialUnavailable, SerialProtocolError) as e:
+            self._notify("BusyLight update", f"Firmware flash failed: {e}")
+            return
+        except Exception as e:  # noqa: BLE001
+            self._notify("BusyLight update", f"Unexpected error: {e}")
+            return
+        finally:
+            self._paused = False
+
+        # 5. Device reboots into the new firmware; the tray reconnects
+        #    automatically on the next poll tick.
+        self._notify(
+            "BusyLight update",
+            f"Device updated to {release.tag}. Reconnecting…",
+        )

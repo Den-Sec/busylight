@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.7] - 2026-05-25
+
+### Added
+- Tray menu item "Update firmware via USB…". Pulls the latest signed `.bin` + `.sig` from the GitHub release, streams it to the device over USB serial, and waits for the post-OTA reboot. Works without Wi-Fi, no manual `.bin` download / web UI upload step. Useful when the device is on an older firmware that doesn't have the new `wifi_list` / `wifi_remove` runtime commands and the bridge can't show saved networks correctly.
+
 ## [0.3.6] - 2026-05-25
 
 ### Changed
