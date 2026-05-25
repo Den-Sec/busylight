@@ -7,7 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.3.19] - 2026-05-25
+## [0.3.20] - 2026-05-25
+
+### Fixed
+- **Self-update silently rolled back to the old version**: reproduced on a clean PC and the update log showed `Access is denied.` on every one of the 30 `move /y` retries. Cause: Defender / ESET / similar real-time AV scanners hold an exclusive write-lock on the freshly-downloaded exe while they scan it. On a 30 MB binary the scan routinely runs past 60 seconds — the 30-retry / 30-second window expired well before the AV released. The bat then "gave up" and the relaunch started the still-old exe.
+  - The helper now polls the new exe for write access before handing off to the bat (`wait_for_av_release`, up to 90 s). The progress dialog shows "Antivirus is scanning the new file… (Xs of up to 90s)" the whole time so the user knows what's happening instead of seeing a frozen screen.
+  - The bat's own retry loop is bumped from 30 to 120 attempts (1 s each) for the extreme edge case where the scan continues after the Python-side wait. Total grace window before "gave up" is now over 2 minutes.
+
+
 
 ### Added
 - **Update log**: the self-update `.bat` now writes every step (timestamps, `move` errorlevel, retry count, `start` errorlevel, "gave up after 30 retries" if the move never wins) to `%TEMP%\busylight-update.log`. New tray menu entry "View last update log" opens it in Notepad. When the update appears to silently do nothing, the log says exactly why — file lock that never released, antivirus quarantine, missing source path, etc.

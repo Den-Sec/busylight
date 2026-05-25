@@ -40,6 +40,7 @@ from .updater import (
     fetch_latest_release,
     install_and_restart,
     is_newer,
+    wait_for_av_release,
 )
 
 log = logging.getLogger("busylight_presence.tray")
@@ -467,8 +468,26 @@ class TrayApp:
 
         try:
             progress.set_progress(1.0)
+            # Wait for AV to release the lock on the downloaded exe
+            # before we hand off to the .bat. On Defender / ESET this
+            # can take up to ~90 s on a 30 MB binary; without this
+            # wait the .bat's `move /y` keeps hitting "Access is
+            # denied" and the update silently rolls back to the old
+            # version.
+            progress.set_indeterminate()
             progress.set_message(
-                "Download complete. Restarting BusyLight…\n"
+                "Antivirus is scanning the new file… "
+                "(this can take up to ~90 seconds)"
+            )
+            def _av_cb(elapsed: float, total: float) -> None:
+                progress.set_message(
+                    "Antivirus is scanning the new file…\n"
+                    f"{int(elapsed)}s of up to {int(total)}s"
+                )
+            wait_for_av_release(new_exe, timeout_s=90.0, progress_cb=_av_cb)
+            progress.set_progress(1.0)
+            progress.set_message(
+                "Antivirus scan complete. Restarting BusyLight…\n"
                 "If Windows asks for permission, click Yes."
             )
             import time

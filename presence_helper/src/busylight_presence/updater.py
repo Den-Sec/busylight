@@ -197,6 +197,48 @@ def download_exe(
     return target
 
 
+def wait_for_av_release(
+    exe_path: Path,
+    timeout_s: float = 90.0,
+    progress_cb=None,
+) -> bool:
+    """Poll the just-downloaded exe until antivirus releases its lock.
+
+    Defender / ESET / similar real-time scanners hold a write-lock on
+    new .exe files while they analyse them — on a 31 MB binary this
+    can take up to ~90 seconds. Our self-replace bat ran into "Access
+    is denied" on every move attempt during that window; bumping the
+    bat's retry count alone wasn't enough because some scans go past
+    30 seconds.
+
+    We test for the AV-clear state by opening the file with
+    write-share denied (`'r+b'` with low-level Win32 semantics via
+    Python's default file mode). When the AV releases the lock, the
+    open succeeds and we return True.
+
+    `progress_cb(elapsed_s, timeout_s)` is called once a second so
+    the UI can show "Antivirus scanning… (X s)" feedback.
+    """
+    import time
+    end = time.monotonic() + timeout_s
+    while time.monotonic() < end:
+        try:
+            # `r+b` requires write permission. If AV holds an
+            # exclusive lock, this raises PermissionError. When the
+            # scan completes, it succeeds.
+            with open(exe_path, "r+b"):
+                return True
+        except (PermissionError, OSError):
+            elapsed = timeout_s - (end - time.monotonic())
+            if progress_cb:
+                try:
+                    progress_cb(elapsed, timeout_s)
+                except Exception:  # noqa: BLE001
+                    pass
+            time.sleep(1.0)
+    return False
+
+
 def install_and_restart(new_exe: Path) -> None:
     """Replace the currently-running exe with `new_exe` and relaunch.
 
@@ -278,8 +320,12 @@ def _write_self_replace_bat(*, new_exe: Path, target: Path) -> Path:
         'if errorlevel 1 echo [%date% %time%]   move returned errorlevel %errorlevel% >> "%LOG%"\r\n'
         "if exist " + f'"{new_exe}"' + " (\r\n"
         '  echo [%date% %time%]   new_exe still present after move >> "%LOG%"\r\n'
-        "  if !attempts! geq 30 (\r\n"
-        '    echo [%date% %time%] gave up after 30 retries >> "%LOG%"\r\n'
+        # Bumped from 30 to 120: real-time AV scanners (Defender,
+        # ESET) routinely hold .exe locks past 60 s on 30+ MB
+        # binaries. Two minutes is enough for every scan we've
+        # measured.
+        "  if !attempts! geq 120 (\r\n"
+        '    echo [%date% %time%] gave up after 120 retries >> "%LOG%"\r\n'
         "    goto :done\r\n"
         "  )\r\n"
         "  timeout /t 1 /nobreak >nul\r\n"
@@ -290,8 +336,6 @@ def _write_self_replace_bat(*, new_exe: Path, target: Path) -> Path:
         'if errorlevel 1 echo [%date% %time%]   start returned errorlevel %errorlevel% >> "%LOG%"\r\n'
         ":done\r\n"
         'echo [%date% %time%] self-updater done >> "%LOG%"\r\n'
-        # Delete the .bat itself last so its own handle is gone, but
-        # leave the .log around for diagnostics.
         f'(goto) 2>nul & del "%~f0"\r\n',
         encoding="ascii",
     )
