@@ -90,6 +90,8 @@ class TrayApp:
                  enabled=lambda _i: self._pending_firmware_update is not None),
             Item("Update firmware via USB…", self._on_firmware_ota_usb),
             Item("Reflash from factory (USB)…", self._on_factory_reflash),
+            Item("Factory reset device (clears PIN + Wi-Fi)…",
+                 self._on_factory_reset_device),
             Item("Settings…", self._open_settings),
             Item(
                 lambda _i: "Resume" if self._paused else "Pause",
@@ -529,6 +531,40 @@ class TrayApp:
         threading.Thread(
             target=self._factory_reflash, daemon=True
         ).start()
+
+    def _on_factory_reset_device(self, _icon, _item) -> None:
+        """Wipe device NVS (PIN, saved Wi-Fi, schedule) and reboot.
+        After this the device boots with PIN = "1234" and no saved
+        networks — useful when the PIN gets out of sync between the
+        bridge and the device firmware."""
+        from .serial_client import (
+            SerialClient, SerialProtocolError, SerialUnavailable,
+            find_busylight_ports,
+        )
+
+        def run() -> None:
+            ports = find_busylight_ports()
+            if not ports:
+                self._notify(
+                    "BusyLight reset",
+                    "No USB device — plug in the cable and try again.",
+                )
+                return
+            try:
+                SerialClient(port=ports[0]).factory_reset()
+            except (SerialUnavailable, SerialProtocolError) as e:
+                self._notify(
+                    "BusyLight reset",
+                    f"Factory reset failed: {e}",
+                )
+                return
+            self._notify(
+                "BusyLight reset",
+                "Device wiped. PIN is now 1234, no saved Wi-Fi. "
+                "Reconnecting…",
+            )
+
+        threading.Thread(target=run, daemon=True).start()
 
     def _factory_reflash(self) -> None:
         """Re-flash the combined firmware image (bootloader + partitions

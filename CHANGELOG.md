@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.13] - 2026-05-25
+
+### Fixed
+- **IN_CALL reverted after ~2s when set manually**: the presence loop unconditionally treated IN_CALL as a mic-driven state. When a user clicked IN_CALL in the web UI and the mic was idle, the next tick pushed `last_manual_state` over the top, reverting the LED. Now the loop distinguishes between "presence-pushed IN_CALL (mic was busy)" and "user-set IN_CALL (anywhere else)" via `last_pushed_state` tracking and only reverts the first kind.
+
+### Added
+- Tray menu item **"Factory reset device (clears PIN + Wi-Fi)…"**: sends `cmd:factory_reset` to the device over USB, wiping NVS. After the reset the device boots with PIN = `1234` and no saved networks — the escape hatch when the PIN gets out of sync between the bridge and the firmware (Dennis hit this after several update cycles).
+
 ## [0.3.12] - 2026-05-25
 
 ### Fixed

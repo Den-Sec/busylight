@@ -172,6 +172,16 @@ class SerialClient:
         about itself (hostname, fw version, wifi up/down, IP)."""
         return self._roundtrip({"cmd": "get_info"})
 
+    def factory_reset(self) -> None:
+        """Wipe the device NVS (PIN, saved Wi-Fi networks, schedule)
+        and reboot. After this, the device boots with PIN = "1234" and
+        no saved networks — same state as a freshly-flashed unit."""
+        resp = self._roundtrip({"cmd": "factory_reset", "confirm": "YES"})
+        if not resp.get("ok"):
+            raise SerialProtocolError(
+                resp.get("error") or "factory_reset rejected"
+            )
+
     def wifi_list(self) -> dict:
         """Return the saved Wi-Fi networks list and which one is
         currently connected, mirroring GET /api/wifi.

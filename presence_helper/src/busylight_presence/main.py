@@ -169,15 +169,30 @@ class PresenceLoop:
                 log.error("re-login failed: %s", exc)
             return
 
-        if current and current != "IN_CALL":
-            if self.last_pushed_state != current:
+        # Decide what we want the device to be in:
+        # - mic active            -> force IN_CALL
+        # - mic idle, presence put IN_CALL earlier (because of mic) ->
+        #   revert to the last manual state
+        # - mic idle, user set IN_CALL manually -> leave it alone
+        # - mic idle, user set anything else      -> leave it alone +
+        #   track it as the new manual state
+        if usage.in_use:
+            desired = "IN_CALL"
+        elif (
+            current == "IN_CALL"
+            and self.last_pushed_state == "IN_CALL"
+        ):
+            # We were the ones who put it in IN_CALL (mic was busy)
+            # and the mic is now idle — restore.
+            desired = self.last_manual_state
+        else:
+            # User-set state. Don't override.
+            desired = current
+            if current and current != "IN_CALL":
                 self.last_manual_state = current
-                log.debug("learnt manual state -> %s", current)
 
-        desired = "IN_CALL" if usage.in_use else self.last_manual_state
-
-        if current == desired:
-            self.last_pushed_state = desired
+        if not desired or current == desired:
+            self.last_pushed_state = current
             self._log_transition(usage)
             return
 
