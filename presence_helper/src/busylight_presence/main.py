@@ -294,6 +294,11 @@ def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     _setup_logging(args.verbose)
 
+    if args.install_startup:
+        return _install_startup()
+    if args.uninstall_startup:
+        return _uninstall_startup()
+
     from .startup import ensure_default_startup
     ensure_default_startup(_default_config_path().parent / ".startup_configured")
 
@@ -302,11 +307,6 @@ def main(argv: list[str] | None = None) -> int:
     if not _guard.acquire():
         log.info("another BusyLight Presence instance is already running; exiting")
         return 0
-
-    if args.install_startup:
-        return _install_startup()
-    if args.uninstall_startup:
-        return _uninstall_startup()
 
     if not supported_platform():
         log.warning(
