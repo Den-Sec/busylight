@@ -11,6 +11,7 @@
 #include "auth.h"
 #include "config_store.h"
 #include "host_presence.h"
+#include "wifi_ap_policy.h"
 #include "hostname.h"
 #include "led_engine.h"
 #include "mqtt_bridge.h"
@@ -39,6 +40,7 @@ ApiServer gApi(&gLed, &gStore, &gAuth, &gConfig);
 ApPortal gApPortal;
 WiFiMulti gWifiMulti;
 HostPresence gHost;
+WifiApPolicy gApPolicy;
 MqttBridge gMqtt;
 Scheduler gScheduler;
 bool gTimeSynced = false;
