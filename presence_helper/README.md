@@ -81,6 +81,66 @@ to that state, not to the helper's default. Pick a state from the web
 UI mid-call and the helper will keep `IN_CALL` for now (your video
 call is still going) but restore your new pick when you hang up.
 
+## Claude mode (optional)
+
+Have the BusyLight double as a Claude Code activity light: **red while
+Claude is working, green when it's idle**, driven entirely by USB
+serial — no cloud, no polling.
+
+```powershell
+busylight-claude on      # arm the mode (also flips to green/idle now)
+busylight-claude off     # disarm it; leaves the light as-is
+busylight-claude status  # prints "on" or "off"
+```
+
+The tray icon also has an **On/Off** toggle for the same switch, for
+anyone who'd rather not touch a terminal.
+
+Arming the mode alone does nothing until Claude Code hooks are wired
+up to call it. The easiest way is:
+
+```powershell
+busylight-claude install-hooks
+```
+
+This edits `~/.claude/settings.json` for you. It's **non-destructive**:
+it takes a backup first (`settings.json.busylight.bak` next to the
+original), preserves every key and hook you already have, and is
+idempotent — running it again never adds duplicate entries. To remove
+only the hooks it added (leaving any of your other hooks untouched):
+
+```powershell
+busylight-claude uninstall-hooks
+```
+
+If you'd rather wire it up by hand, or want to see what
+`install-hooks` writes, add this to `~/.claude/settings.json`
+(adjust the command to a full path to `busylight-claude.exe`, or
+`python -m busylight_presence.claude_light` from the `presence_helper`
+venv, if it's not on your `PATH`):
+
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      { "hooks": [{ "type": "command", "command": "busylight-claude working" }] }
+    ],
+    "Stop": [
+      { "hooks": [{ "type": "command", "command": "busylight-claude idle" }] }
+    ],
+    "SessionStart": [
+      { "hooks": [{ "type": "command", "command": "busylight-claude idle" }] }
+    ]
+  }
+}
+```
+
+`UserPromptSubmit` fires when you send Claude a new turn (light turns
+red / `BUSY`); `Stop` and `SessionStart` fire when Claude finishes
+responding or a session starts (light turns green / `AVAILABLE`).
+Every hook call is best-effort over USB serial and never fails your
+Claude Code turn, even with no BusyLight plugged in.
+
 ## Limitations / future work
 
 - macOS and Linux back-ends are no-ops. PRs welcome.
