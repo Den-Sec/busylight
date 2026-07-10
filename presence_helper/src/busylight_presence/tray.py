@@ -29,6 +29,7 @@ import pystray
 from pystray import MenuItem as Item, Menu
 
 from . import __version__
+from . import claude_light
 from .icons import status_icon
 from .settings_window import SettingsWindow
 from .startup import enable_startup, disable_startup, is_startup_enabled
@@ -53,6 +54,12 @@ log = logging.getLogger("busylight_presence.tray")
 # A first check fires ~3 seconds after launch so a user who downloads
 # a slightly-stale exe gets the prompt immediately.
 UPDATE_CHECK_INTERVAL_S = 60 * 60
+
+
+def _should_drive_from_mic(*, paused: bool, claude_on: bool) -> bool:
+    # The mic drives the LED only in normal mode: not while paused and not
+    # while Claude mode owns the light.
+    return not paused and not claude_on
 
 
 class TrayApp:
@@ -104,6 +111,11 @@ class TrayApp:
                 checked=lambda _i: is_startup_enabled(),
             ),
             Item(
+                "Claude mode",
+                self._toggle_claude,
+                checked=lambda _i: claude_light.is_on(),
+            ),
+            Item(
                 lambda _i: "Resume" if self._paused else "Pause",
                 self._toggle_pause,
             ),
@@ -147,16 +159,14 @@ class TrayApp:
         # is not thread-safe and the settings window runs on the main
         # thread via its own mainloop when opened.
         while not self._stop_event.is_set():
-            if not self._paused:
+            if _should_drive_from_mic(paused=self._paused, claude_on=claude_light.is_on()):
                 try:
                     self._loop.tick()
                 except Exception as e:  # noqa: BLE001
                     log.exception("tick error: %s", e)
             elif not WebUiBridge.suspended:
-                # Paused by the user (NOT an OTA/reflash suspend): keep the
-                # serial channel warm so the firmware's host-present signal
-                # stays alive. Skip entirely during OTA — the COM port is
-                # reserved for the stream (WebUiBridge.suspended).
+                # Paused or Claude mode: don't drive from the mic, but keep
+                # the firmware's host-present signal alive. Never during OTA.
                 self._loop.keepalive()
             self._refresh_icon()
             time.sleep(self._loop.cfg.poll_seconds)
@@ -273,6 +283,12 @@ class TrayApp:
             disable_startup()
         else:
             enable_startup()
+
+    def _toggle_claude(self, _icon, _item) -> None:
+        if claude_light.is_on():
+            claude_light.disable()
+        else:
+            claude_light.enable()
 
     def _quit(self, _icon, _item):
         self._stop_event.set()
