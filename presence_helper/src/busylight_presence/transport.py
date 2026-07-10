@@ -36,8 +36,10 @@ log = logging.getLogger(__name__)
 # How long to trust a previously-failed serial probe before re-scanning.
 # 30 s is a compromise: long enough that we don't pay the COM-enum cost
 # on every poll (which is ~80 ms on Windows), short enough that plugging
-# in the cable mid-session feels responsive.
-SERIAL_RESCAN_INTERVAL_S = 30.0
+# in the cable mid-session feels responsive. While disconnected we rescan
+# much faster (3 s) so plugging the cable back in reacquires quickly.
+SERIAL_RESCAN_CONNECTED_S = 30.0
+SERIAL_RESCAN_DISCONNECTED_S = 3.0
 
 
 class BusyLightTransport:
@@ -129,9 +131,17 @@ class BusyLightTransport:
     # ------------------------------------------------------------------
     # Internals
     # ------------------------------------------------------------------
+    def _rescan_interval(self) -> float:
+        # Reacquire fast when we have no channel; stay cheap once connected.
+        return (
+            SERIAL_RESCAN_CONNECTED_S
+            if self._serial is not None
+            else SERIAL_RESCAN_DISCONNECTED_S
+        )
+
     def _refresh_serial(self, *, force: bool = False) -> None:
         now = time.monotonic()
-        if not force and (now - self._last_serial_scan) < SERIAL_RESCAN_INTERVAL_S:
+        if not force and (now - self._last_serial_scan) < self._rescan_interval():
             return
         self._last_serial_scan = now
         ports = find_busylight_ports()
@@ -141,13 +151,23 @@ class BusyLightTransport:
             self._serial = None
             self._serial_port = None
             return
-        # If the active port is gone but another candidate appeared,
-        # switch. If we have no client yet, pick the first.
-        chosen = ports[0]
-        if self._serial_port != chosen:
-            self._serial_port = chosen
-            self._serial = SerialClient(port=chosen)
-            log.info("serial candidate: %s", chosen)
+        # Don't trust position: a generic CH340/CP210x at a dock shares
+        # our VID list. Probe each candidate and keep the first that
+        # actually answers `pong`.
+        for port in ports:
+            candidate = SerialClient(port=port)
+            try:
+                if candidate.ping():
+                    if self._serial_port != port:
+                        log.info("serial candidate confirmed by pong: %s", port)
+                    self._serial = candidate
+                    self._serial_port = port
+                    return
+            except Exception as e:  # noqa: BLE001
+                log.debug("candidate %s failed ping: %s", port, e)
+        # No candidate answered. Drop any stale handle.
+        self._serial = None
+        self._serial_port = None
 
     def _maybe_rescan_serial(self) -> None:
         if self._serial is not None:
