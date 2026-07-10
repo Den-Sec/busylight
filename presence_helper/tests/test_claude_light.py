@@ -50,6 +50,36 @@ def test_best_effort_set_swallows_all_errors(tmp_path, monkeypatch):
     assert cl._best_effort_set("BUSY") is False
 
 
+def test_best_effort_set_swallows_per_port_errors(tmp_path, monkeypatch):
+    _point_flag_at(tmp_path, monkeypatch)
+    monkeypatch.setattr(cl, "find_busylight_ports", lambda: ["COM_X", "COM_Y"])
+
+    class _Boom:
+        def __init__(self, port):
+            pass
+
+        def set_state(self, state):
+            raise RuntimeError("no ack")
+
+    monkeypatch.setattr(cl, "SerialClient", _Boom)
+    assert cl._best_effort_set("BUSY") is False  # both ports fail -> False, no raise
+
+
+def test_best_effort_set_returns_true_on_first_success(tmp_path, monkeypatch):
+    _point_flag_at(tmp_path, monkeypatch)
+    monkeypatch.setattr(cl, "find_busylight_ports", lambda: ["COM_X"])
+
+    class _Ok:
+        def __init__(self, port):
+            pass
+
+        def set_state(self, state):
+            pass
+
+    monkeypatch.setattr(cl, "SerialClient", _Ok)
+    assert cl._best_effort_set("BUSY") is True
+
+
 def test_cli_working_exits_zero_even_with_no_device(tmp_path, monkeypatch):
     _point_flag_at(tmp_path, monkeypatch)
     monkeypatch.setattr(cl, "find_busylight_ports", lambda: [])

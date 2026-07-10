@@ -23,7 +23,10 @@ def flag_path() -> Path:
 
 
 def is_on() -> bool:
-    return flag_path().exists()
+    try:
+        return flag_path().exists()
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def _best_effort_set(state: str) -> bool:
