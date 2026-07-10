@@ -25,7 +25,6 @@ namespace {
 constexpr int kRedPin = 6;
 constexpr int kGreenPin = 23;
 
-constexpr unsigned int kMaxStaFailuresBeforeAp = 3;
 constexpr unsigned long kStateDebounceMs = 60UL * 1000UL;
 constexpr unsigned long kApPortalTimeoutMs = 10UL * 60UL * 1000UL;
 
@@ -203,7 +202,9 @@ void startStationConnection() {
   // Kick a fresh association: WiFiMulti picks the strongest AP it
   // remembers and connects. Returns within `timeout_ms` regardless of
   // result, so we keep it short to avoid blocking the LED tick.
-  gWifiMulti.run(2000);
+  // Was gWifiMulti.run(2000): a 2 s budget often can't finish a 2.4 GHz
+  // scan, so a present-but-slow AP was wrongly declared unreachable.
+  gWifiMulti.run(6000);
   gWifi.kicked = true;
 }
 
@@ -259,6 +260,7 @@ void networkingTick() {
       MDNS.end();
       MDNS.begin(gDeviceHostname.c_str());
       gWifiWasConnected = true;
+      gApPolicy.update(true, millis());
       // Coming back from a WIFI_ERROR overlay: restore whatever
       // state the user last asked for instead of leaving the
       // LED on the error pattern.
@@ -297,14 +299,21 @@ void networkingTick() {
 
   if (now < gWifi.nextRetryMs) return;
 
-  // Backoff elapsed without a successful connection. Count as a failure,
-  // bump attempt index, retry.
+  // Backoff elapsed without a successful connection. Keep retrying the
+  // known networks forever with capped backoff; only fall back to the
+  // setup AP as a genuine last resort (no USB host + no saved network
+  // reachable for the grace period). This replaces the old blind
+  // "3 failures in ~8 s -> AP" trigger that false-dropped office->home
+  // roaming and USB-anywhere devices.
   gWifi.attemptIndex =
       static_cast<uint8_t>(gWifi.attemptIndex + 1) %
       (sizeof(kWifiBackoffMs) / sizeof(uint32_t));
   gWifi.failuresTotal++;
 
-  if (gWifi.failuresTotal >= kMaxStaFailuresBeforeAp) {
+  // `now` is already `millis()` from the top of this not-connected path
+  // (main.cpp:284). Reuse it instead of re-reading the clock.
+  gApPolicy.update(false, now);  // still not associated
+  if (gApPolicy.shouldEnterAp(gHost.present(now), now)) {
     enterApPortal();
     return;
   }
@@ -470,6 +479,7 @@ void handleSerialProvisioning() {
   String line = Serial.readStringUntil('\n');
   line.trim();
   if (line.length() == 0) return;
+  gHost.noteSerialActivity(millis());
 
   JsonDocument in;
   auto err = deserializeJson(in, line);
@@ -720,6 +730,7 @@ void setup() {
 
   rebuildWifiMulti();
   rebuildScheduler();
+  gApPolicy.begin(millis());
 
   if (gConfig.configured) {
     WiFi.mode(WIFI_STA);
@@ -732,6 +743,7 @@ void setup() {
 }
 
 void loop() {
+  gHost.noteDtr(static_cast<bool>(Serial));
   handleSerialProvisioning();
 
   // While an OTA session is in flight, every async beacon we'd emit
