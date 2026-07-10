@@ -326,6 +326,8 @@ def _write_self_replace_bat(*, new_exe: Path, target: Path) -> Path:
         # measured.
         "  if !attempts! geq 120 (\r\n"
         '    echo [%date% %time%] gave up after 120 retries >> "%LOG%"\r\n'
+        '    echo [%date% %time%] relaunching existing exe so the app is not left dead >> "%LOG%"\r\n'
+        f'    start "" "{target}"\r\n'
         "    goto :done\r\n"
         "  )\r\n"
         "  timeout /t 1 /nobreak >nul\r\n"
