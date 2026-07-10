@@ -28,7 +28,6 @@ if (-not (Test-Path ".\.venv\Scripts\pyinstaller.exe")) {
 & .\.venv\Scripts\pyinstaller.exe `
   --onefile `
   --noconsole `
-  --uac-admin `
   --name BusyLightPresence `
   --paths src `
   --add-data "src/busylight_presence/webui;busylight_presence/webui" `

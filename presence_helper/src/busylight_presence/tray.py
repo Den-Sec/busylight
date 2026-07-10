@@ -31,6 +31,7 @@ from pystray import MenuItem as Item, Menu
 from . import __version__
 from .icons import status_icon
 from .settings_window import SettingsWindow
+from .startup import enable_startup, disable_startup, is_startup_enabled
 from .update_progress_window import UpdateProgressWindow
 from .webui_bridge import WebUiBridge
 from .webview_window import open_device_webui
@@ -97,6 +98,11 @@ class TrayApp:
             Item("Factory reset device (clears PIN + Wi-Fi)…",
                  self._on_factory_reset_device),
             Item("Settings…", self._open_settings),
+            Item(
+                "Start at login",
+                self._toggle_startup,
+                checked=lambda _i: is_startup_enabled(),
+            ),
             Item(
                 lambda _i: "Resume" if self._paused else "Pause",
                 self._toggle_pause,
@@ -255,6 +261,12 @@ class TrayApp:
     def _toggle_pause(self, _icon, _item):
         self._paused = not self._paused
         self._refresh_icon()
+
+    def _toggle_startup(self, _icon, _item) -> None:
+        if is_startup_enabled():
+            disable_startup()
+        else:
+            enable_startup()
 
     def _quit(self, _icon, _item):
         self._stop_event.set()

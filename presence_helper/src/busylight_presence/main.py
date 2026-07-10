@@ -226,37 +226,13 @@ class PresenceLoop:
 # Auto-start install / uninstall
 # ---------------------------------------------------------------------------
 
-def _registry_run_path() -> str:
-    return r"Software\Microsoft\Windows\CurrentVersion\Run"
-
-
-def _registry_value_name() -> str:
-    return "BusyLightPresence"
-
-
 def _install_startup() -> int:
     if sys.platform != "win32":
         print("--install-startup is Windows-only.", file=sys.stderr)
         return 2
-    import winreg
-
-    if getattr(sys, "frozen", False):
-        target = f'"{sys.executable}"'
-    else:
-        # Run via "python -m busylight_presence" so the venv stays in scope.
-        py = sys.executable
-        target = f'"{py}" -m busylight_presence'
-
-    with winreg.OpenKey(
-        winreg.HKEY_CURRENT_USER,
-        _registry_run_path(),
-        0,
-        winreg.KEY_SET_VALUE,
-    ) as key:
-        winreg.SetValueEx(
-            key, _registry_value_name(), 0, winreg.REG_SZ, target
-        )
-    print(f"Registered to launch at login: {target}")
+    from .startup import enable_startup, _target_command
+    enable_startup()
+    print(f"Registered to launch at login: {_target_command()}")
     return 0
 
 
@@ -264,19 +240,9 @@ def _uninstall_startup() -> int:
     if sys.platform != "win32":
         print("--uninstall-startup is Windows-only.", file=sys.stderr)
         return 2
-    import winreg
-
-    try:
-        with winreg.OpenKey(
-            winreg.HKEY_CURRENT_USER,
-            _registry_run_path(),
-            0,
-            winreg.KEY_SET_VALUE,
-        ) as key:
-            winreg.DeleteValue(key, _registry_value_name())
-        print("Removed login auto-start entry.")
-    except FileNotFoundError:
-        print("Auto-start entry was not present; nothing to do.")
+    from .startup import disable_startup
+    disable_startup()
+    print("Removed login auto-start entry.")
     return 0
 
 
@@ -327,6 +293,10 @@ def _run_tray(loop: PresenceLoop) -> int:
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     _setup_logging(args.verbose)
+
+    from .startup import ensure_default_startup
+    from .config import _default_config_path
+    ensure_default_startup(_default_config_path().parent / ".startup_configured")
 
     if args.install_startup:
         return _install_startup()
