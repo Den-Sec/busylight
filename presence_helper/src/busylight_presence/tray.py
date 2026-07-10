@@ -152,6 +152,12 @@ class TrayApp:
                     self._loop.tick()
                 except Exception as e:  # noqa: BLE001
                     log.exception("tick error: %s", e)
+            elif not WebUiBridge.suspended:
+                # Paused by the user (NOT an OTA/reflash suspend): keep the
+                # serial channel warm so the firmware's host-present signal
+                # stays alive. Skip entirely during OTA — the COM port is
+                # reserved for the stream (WebUiBridge.suspended).
+                self._loop.keepalive()
             self._refresh_icon()
             time.sleep(self._loop.cfg.poll_seconds)
 

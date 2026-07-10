@@ -131,6 +131,15 @@ class PresenceLoop:
                 log.warning("re-login after config change failed: %s", e)
         self.cfg = cfg
 
+    def keepalive(self) -> None:
+        """Best-effort serial round-trip that keeps the firmware's
+        'USB host present' signal alive while the loop is paused, without
+        driving the LED. Errors are swallowed — it's only a heartbeat."""
+        try:
+            self.client.get_state()
+        except (BusyLightAuthError, BusyLightNetworkError):
+            pass
+
     def _accumulate_stats(self) -> None:
         now = time.monotonic()
         elapsed = now - self._stats_last_tick
