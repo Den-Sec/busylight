@@ -260,7 +260,6 @@ void networkingTick() {
       MDNS.end();
       MDNS.begin(gDeviceHostname.c_str());
       gWifiWasConnected = true;
-      gApPolicy.update(true, millis());
       // Coming back from a WIFI_ERROR overlay: restore whatever
       // state the user last asked for instead of leaving the
       // LED on the error pattern.
@@ -269,6 +268,9 @@ void networkingTick() {
         gErrorLedApplied = false;
       }
     }
+    gApPolicy.update(true, millis());  // refresh grace clock every connected tick so
+                                       // the 5-min grace is measured from the DROP, not
+                                       // from first connect (F5).
     startServerIfNeeded();
     return;
   }
@@ -310,8 +312,7 @@ void networkingTick() {
       (sizeof(kWifiBackoffMs) / sizeof(uint32_t));
   gWifi.failuresTotal++;
 
-  // `now` is already `millis()` from the top of this not-connected path
-  // (main.cpp:284). Reuse it instead of re-reading the clock.
+  // 'now' is already millis() from the top of this not-connected path; reuse it.
   gApPolicy.update(false, now);  // still not associated
   if (gApPolicy.shouldEnterAp(gHost.present(now), now)) {
     enterApPortal();
