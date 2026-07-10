@@ -260,6 +260,8 @@ void networkingTick() {
       gWifi.nextRetryMs = 0;
       MDNS.end();
       MDNS.begin(gDeviceHostname.c_str());
+      MDNS.addService("http", "tcp", 80);   // re-add: the service record
+                                            // vanished after the first roam
       gWifiWasConnected = true;
       // Coming back from a WIFI_ERROR overlay: restore whatever
       // state the user last asked for instead of leaving the
