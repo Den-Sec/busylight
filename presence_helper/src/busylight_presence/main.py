@@ -26,7 +26,7 @@ from .client import (
     BusyLightAuthError,
     BusyLightNetworkError,
 )
-from .config import PresenceConfig, load_config
+from .config import PresenceConfig, _default_config_path, load_config
 from .mic_monitor import microphone_in_use, supported_platform
 from .transport import BusyLightTransport
 
@@ -131,6 +131,15 @@ class PresenceLoop:
                 log.warning("re-login after config change failed: %s", e)
         self.cfg = cfg
 
+    def keepalive(self) -> None:
+        """Best-effort serial round-trip that keeps the firmware's
+        'USB host present' signal alive while the loop is paused, without
+        driving the LED. Errors are swallowed — it's only a heartbeat."""
+        try:
+            self.client.get_state()
+        except (BusyLightAuthError, BusyLightNetworkError):
+            pass
+
     def _accumulate_stats(self) -> None:
         now = time.monotonic()
         elapsed = now - self._stats_last_tick
@@ -226,37 +235,13 @@ class PresenceLoop:
 # Auto-start install / uninstall
 # ---------------------------------------------------------------------------
 
-def _registry_run_path() -> str:
-    return r"Software\Microsoft\Windows\CurrentVersion\Run"
-
-
-def _registry_value_name() -> str:
-    return "BusyLightPresence"
-
-
 def _install_startup() -> int:
     if sys.platform != "win32":
         print("--install-startup is Windows-only.", file=sys.stderr)
         return 2
-    import winreg
-
-    if getattr(sys, "frozen", False):
-        target = f'"{sys.executable}"'
-    else:
-        # Run via "python -m busylight_presence" so the venv stays in scope.
-        py = sys.executable
-        target = f'"{py}" -m busylight_presence'
-
-    with winreg.OpenKey(
-        winreg.HKEY_CURRENT_USER,
-        _registry_run_path(),
-        0,
-        winreg.KEY_SET_VALUE,
-    ) as key:
-        winreg.SetValueEx(
-            key, _registry_value_name(), 0, winreg.REG_SZ, target
-        )
-    print(f"Registered to launch at login: {target}")
+    from .startup import enable_startup, _target_command
+    enable_startup()
+    print(f"Registered to launch at login: {_target_command()}")
     return 0
 
 
@@ -264,19 +249,9 @@ def _uninstall_startup() -> int:
     if sys.platform != "win32":
         print("--uninstall-startup is Windows-only.", file=sys.stderr)
         return 2
-    import winreg
-
-    try:
-        with winreg.OpenKey(
-            winreg.HKEY_CURRENT_USER,
-            _registry_run_path(),
-            0,
-            winreg.KEY_SET_VALUE,
-        ) as key:
-            winreg.DeleteValue(key, _registry_value_name())
-        print("Removed login auto-start entry.")
-    except FileNotFoundError:
-        print("Auto-start entry was not present; nothing to do.")
+    from .startup import disable_startup
+    disable_startup()
+    print("Removed login auto-start entry.")
     return 0
 
 
@@ -324,6 +299,14 @@ def _run_tray(loop: PresenceLoop) -> int:
 # Entry
 # ---------------------------------------------------------------------------
 
+def _fallback_config(explicit_path) -> PresenceConfig:
+    """A safe default config so the tray can still launch into Settings
+    when the on-disk config is missing or malformed."""
+    return PresenceConfig(
+        host="", pin="", config_path=explicit_path or _default_config_path()
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     _setup_logging(args.verbose)
@@ -333,12 +316,22 @@ def main(argv: list[str] | None = None) -> int:
     if args.uninstall_startup:
         return _uninstall_startup()
 
+    from .startup import ensure_default_startup
+    ensure_default_startup(_default_config_path().parent / ".startup_configured")
+
+    from .single_instance import SingleInstance
+    _guard = SingleInstance()
+    if not _guard.acquire():
+        log.info("another BusyLight Presence instance is already running; exiting")
+        return 0
+
     if not supported_platform():
         log.warning(
             "presence detection is currently Windows-only; on other "
             "platforms the helper will not flip the light."
         )
 
+    cfg = _fallback_config(args.config)
     try:
         cfg = load_config(args.config)
         cfg.ensure_valid()

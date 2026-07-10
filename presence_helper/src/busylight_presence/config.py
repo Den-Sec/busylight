@@ -81,6 +81,13 @@ class PresenceConfig:
             parser.write(fh)
 
 
+def _safe_float(value: str, default: float) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def load_config(explicit_path: Path | None = None) -> PresenceConfig:
     path = explicit_path or _default_config_path()
     host = os.environ.get(ENV_HOST, "").strip()
@@ -100,7 +107,7 @@ def load_config(explicit_path: Path | None = None) -> PresenceConfig:
                 "default_state", ""
             ).upper()
 
-    poll_seconds = float(poll) if poll else 2.0
+    poll_seconds = _safe_float(poll, 2.0) if poll else 2.0
     default_state = default_state or "AVAILABLE"
 
     cfg = PresenceConfig(
