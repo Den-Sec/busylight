@@ -38,3 +38,20 @@ def test_ensure_default_startup_noop_when_not_frozen(
     sentinel = tmp_path / ".startup_configured"
     startup.ensure_default_startup(sentinel)
     assert not sentinel.exists()
+
+
+def test_ensure_default_startup_survives_registry_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # enable_startup() can raise (locked-down GPO, AV, transient OSError).
+    # This default-on convenience must never take down the app.
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(startup, "is_startup_enabled", lambda: False)
+
+    def _boom() -> None:
+        raise OSError("registry locked")
+
+    monkeypatch.setattr(startup, "enable_startup", _boom)
+    sentinel = tmp_path / ".startup_configured"
+    startup.ensure_default_startup(sentinel)  # must NOT raise
+    assert sentinel.exists()  # sentinel still written

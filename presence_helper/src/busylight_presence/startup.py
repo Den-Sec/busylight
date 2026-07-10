@@ -8,8 +8,11 @@ logon.
 
 from __future__ import annotations
 
+import logging
 import sys
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 _RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 _VALUE_NAME = "BusyLightPresence"
@@ -78,6 +81,10 @@ def ensure_default_startup(sentinel: Path) -> None:
     try:
         if not is_startup_enabled():
             enable_startup()
+    except OSError as e:
+        # Default-on convenience must never take down the app (locked-down
+        # GPO, AV, transient OSError, etc.) — just log and move on.
+        log.warning("could not register start-at-login: %s", e)
     finally:
         sentinel.parent.mkdir(parents=True, exist_ok=True)
         sentinel.write_text("1", encoding="ascii")

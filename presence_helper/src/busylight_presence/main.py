@@ -26,7 +26,7 @@ from .client import (
     BusyLightAuthError,
     BusyLightNetworkError,
 )
-from .config import PresenceConfig, load_config
+from .config import PresenceConfig, _default_config_path, load_config
 from .mic_monitor import microphone_in_use, supported_platform
 from .transport import BusyLightTransport
 
@@ -295,7 +295,6 @@ def main(argv: list[str] | None = None) -> int:
     _setup_logging(args.verbose)
 
     from .startup import ensure_default_startup
-    from .config import _default_config_path
     ensure_default_startup(_default_config_path().parent / ".startup_configured")
 
     if args.install_startup:
