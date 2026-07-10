@@ -12,6 +12,7 @@ authors = [{ name = "Dennis Sepede" }]
 
 [project.scripts]
 busylight-presence = "busylight_presence.main:main"
+busylight-claude = "busylight_presence.claude_light:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

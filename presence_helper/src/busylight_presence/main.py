@@ -308,6 +308,11 @@ def _fallback_config(explicit_path) -> PresenceConfig:
 
 
 def main(argv: list[str] | None = None) -> int:
+    _argv = list(sys.argv[1:] if argv is None else argv)
+    if _argv and _argv[0] == "--claude":
+        from .claude_light import main as _claude_main
+        return _claude_main(_argv[1:])
+
     args = _build_parser().parse_args(argv)
     _setup_logging(args.verbose)
 
