@@ -10,6 +10,7 @@
 #include "ota_serial.h"
 #include "auth.h"
 #include "config_store.h"
+#include "host_presence.h"
 #include "hostname.h"
 #include "led_engine.h"
 #include "mqtt_bridge.h"
@@ -37,6 +38,7 @@ AuthManager gAuth;
 ApiServer gApi(&gLed, &gStore, &gAuth, &gConfig);
 ApPortal gApPortal;
 WiFiMulti gWifiMulti;
+HostPresence gHost;
 MqttBridge gMqtt;
 Scheduler gScheduler;
 bool gTimeSynced = false;
