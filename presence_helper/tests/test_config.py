@@ -50,9 +50,15 @@ def test_env_vars_override_ini(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     assert cfg.pin == "9999"
 
 
-def test_ensure_valid_rejects_missing_host() -> None:
+def test_ensure_valid_allows_empty_host_for_usb_only() -> None:
+    # host + PIN are optional: USB-only setups reach the device over the
+    # serial cable without either, so ensure_valid must not reject them.
+    PresenceConfig(host="", pin="1234").ensure_valid()  # no raise
+
+
+def test_ensure_valid_rejects_host_with_spaces() -> None:
     with pytest.raises(ValueError, match="host"):
-        PresenceConfig(host="", pin="1234").ensure_valid()
+        PresenceConfig(host="bad host.local", pin="1234").ensure_valid()
 
 
 def test_ensure_valid_rejects_non_digit_pin() -> None:
