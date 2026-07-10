@@ -290,6 +290,14 @@ def _run_tray(loop: PresenceLoop) -> int:
 # Entry
 # ---------------------------------------------------------------------------
 
+def _fallback_config(explicit_path) -> PresenceConfig:
+    """A safe default config so the tray can still launch into Settings
+    when the on-disk config is missing or malformed."""
+    return PresenceConfig(
+        host="", pin="", config_path=explicit_path or _default_config_path()
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     _setup_logging(args.verbose)
@@ -314,6 +322,7 @@ def main(argv: list[str] | None = None) -> int:
             "platforms the helper will not flip the light."
         )
 
+    cfg = _fallback_config(args.config)
     try:
         cfg = load_config(args.config)
         cfg.ensure_valid()

@@ -102,3 +102,13 @@ def test_load_config_uses_defaults_when_no_file_no_env(
     assert cfg.pin == ""
     assert cfg.poll_seconds == 2.0
     assert cfg.default_state == "AVAILABLE"
+
+
+def test_bad_poll_seconds_falls_back_to_default(tmp_path: Path) -> None:
+    cfg_path = tmp_path / "presence.ini"
+    cfg_path.write_text(
+        "[busylight]\nhost = x.local\npin = 1234\npoll_seconds = notanumber\n",
+        encoding="utf-8",
+    )
+    cfg = load_config(cfg_path)          # must NOT raise
+    assert cfg.poll_seconds == 2.0
