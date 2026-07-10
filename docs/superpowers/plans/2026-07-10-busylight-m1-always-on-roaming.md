@@ -334,10 +334,10 @@ In `loop()`, at the very top of the function (`main.cpp:731`, before `handleSeri
 
 - [ ] **Step 4: Replace the failure-count AP trigger with the policy**
 
-In `networkingTick()`, the connected branch (`main.cpp:249-268`) already resets state on a fresh connection. Add the policy update there so association success resets the grace clock. Inside `if (isConnected) {`, right after `gWifiWasConnected = true;` inside the `if (!gWifiWasConnected)` block (`main.cpp:257`), add:
+In `networkingTick()`'s connected branch, refresh the grace clock so the AP grace period is measured from the moment the network becomes unreachable (the drop), NOT from first connect. **This must run on EVERY connected tick, not only on the fresh-connection edge** — otherwise an always-on device connected longer than the grace period would false-drop to the AP within one retry cycle the instant Wi-Fi drops while no USB host is present (the exact ~8 s regression F5 exists to kill). Place it in the `if (isConnected) {` branch AFTER the `if (!gWifiWasConnected) { ... }` reset block closes and BEFORE `startServerIfNeeded();`:
 
 ```cpp
-      gApPolicy.update(true, millis());
+    gApPolicy.update(true, millis());  // every connected tick: grace measured from the drop (F5)
 ```
 
 Then replace the **entire failure/retry tail** of `networkingTick()` (`main.cpp:296-313`) — from the comment `// Backoff elapsed without a successful connection.` through the closing `Serial.printf(... "wifi_retry" ...)` call — with the following (this re-includes the `startStationConnection()` + `nextRetryMs` + `wifi_retry` printf, so make sure you delete the originals at 308-313 too, or you will duplicate them):
@@ -386,6 +386,7 @@ Expected: SUCCESS; device reboots and emits `{"event":"ready",...}` then `{"even
 1. With a valid saved network present, watch the monitor: the device connects (`server_started`) and **never** emits `ap_portal_started` within the first 30 s.
 2. Power off the AP (or move out of range) with the USB cable plugged in: observe `wifi_retry` beacons continuing indefinitely and **no** `ap_portal_started` and **no** reboot (`ready` never re-appears) for at least 5 minutes — because a host is present.
 3. Confirm office→home style recovery: bring a second saved AP up; the device reconnects and emits `server_started` again without a reboot.
+4. **Host-absent grace check (the case that unit/compile tests can't see):** let the device stay connected for **more than 5 minutes**, then **unplug the USB cable** (so no host is present) and only THEN drop the AP. Watch on a separate power source / the router logs: the device must keep emitting `wifi_retry` and **only** open `ap_portal_started` after the full ~5-min grace measured **from the drop** — not within ~8 s. (This is the path the grace-clock-refresh fix protects; with the cable plugged the host-present short-circuit hides it.)
 
 Record the observations in the commit message.
 
