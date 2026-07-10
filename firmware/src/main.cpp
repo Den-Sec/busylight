@@ -224,7 +224,8 @@ void networkingTick() {
       delay(150);
       ESP.restart();
     }
-    if (gApPortal.uptimeMs() > kApPortalTimeoutMs) {
+    if (gApPortal.uptimeMs() > kApPortalTimeoutMs &&
+        !gHost.present(millis())) {
       Serial.println(
           "{\"ok\":false,\"event\":\"ap_portal_timeout\"}");
       delay(150);
@@ -242,7 +243,7 @@ void networkingTick() {
     // overridden. Apply WIFI_ERROR once and leave the LED engine
     // alone after that; the engine's `tick()` is what produces the
     // alternating red/green pattern.
-    if (!gErrorLedApplied) {
+    if (!gErrorLedApplied && !gHost.present(millis())) {
       gLed.setState(STATUS_WIFI_ERROR);
       gErrorLedApplied = true;
     }
@@ -284,7 +285,7 @@ void networkingTick() {
     gWifi.kicked = false;
   }
 
-  if (!gErrorLedApplied) {
+  if (!gErrorLedApplied && !gHost.present(millis())) {
     gLed.setState(STATUS_WIFI_ERROR);
     gErrorLedApplied = true;
   }
