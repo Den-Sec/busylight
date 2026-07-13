@@ -148,3 +148,9 @@ def test_label_fallback_when_no_cwd(tmp_path, monkeypatch):
     cl.mark_idle("A", None)        # no cwd -> label "session"
     s = cl.status()
     assert s["sessions"][0]["label"] == "session"
+
+
+def test_prune_clears_dangling_focus():
+    # a focus pointing at a session that's gone must collapse to None
+    out = cl._prune({"sessions": {}, "focus": "DEAD"})
+    assert out["focus"] is None

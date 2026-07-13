@@ -1036,9 +1036,12 @@ async function refreshClaude() {
     const s = await api("/api/claude-mode");
     claudeToggle.checked = !!s.on;
     if (claudeStatusMeta) claudeStatusMeta.textContent = s.on ? "On" : "Off";
+    const focusLabel = s.focus
+      ? ((s.sessions || []).find((x) => x.id === s.focus) || {}).label || "a session"
+      : "";
     const st = s.on
       ? s.focus
-        ? `focused on ${String(s.focus).slice(0, 8)}…`
+        ? `following ${focusLabel}`
         : s.working
           ? `${s.working} session(s) working`
           : "idle"

@@ -151,6 +151,8 @@ def _prune(state: dict) -> dict:
         for sid, s in state["sessions"].items()
         if isinstance(s.get("ts"), (int, float)) and (now - s["ts"]) <= ttl
     }
+    if state.get("focus") not in state["sessions"]:
+        state["focus"] = None
     return state
 
 
