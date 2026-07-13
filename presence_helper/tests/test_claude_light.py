@@ -1,89 +1,91 @@
 # presence_helper/tests/test_claude_light.py
 from __future__ import annotations
 
+import json
+
 import busylight_presence.claude_light as cl
 
 
-def _point_flag_at(tmp_path, monkeypatch):
-    # Redirect the flag into a temp dir so tests never touch the real config.
+def _use_tmp(tmp_path, monkeypatch, *, on=True):
     monkeypatch.setattr(cl, "flag_path", lambda: tmp_path / "claude_mode")
+    monkeypatch.setattr(cl, "state_path", lambda: tmp_path / "claude_state.json")
+    monkeypatch.setattr(cl, "_best_effort_set", lambda state: cl._applied.append(state))
+    cl._applied = []
+    if on:
+        (tmp_path / "claude_mode").write_text("on", encoding="ascii")
 
 
-def test_working_idle_are_noops_when_flag_absent(tmp_path, monkeypatch):
-    _point_flag_at(tmp_path, monkeypatch)
-    calls = []
-    monkeypatch.setattr(cl, "_best_effort_set", lambda state: calls.append(state))
-    assert cl.is_on() is False
-    cl.set_working()
-    cl.set_idle()
-    assert calls == []  # no device writes when the mode is off
+def test_noops_when_off(tmp_path, monkeypatch):
+    _use_tmp(tmp_path, monkeypatch, on=False)
+    cl.mark_working("A")
+    cl.mark_idle("A")
+    assert cl._applied == []
 
 
-def test_working_idle_set_states_when_flag_present(tmp_path, monkeypatch):
-    _point_flag_at(tmp_path, monkeypatch)
-    calls = []
-    monkeypatch.setattr(cl, "_best_effort_set", lambda state: calls.append(state))
-    cl.enable()  # creates flag (and sets green)
-    assert cl.is_on() is True
-    calls.clear()
-    cl.set_working()
-    cl.set_idle()
-    assert calls == ["BUSY", "AVAILABLE"]
+def test_aggregate_red_if_any_working(tmp_path, monkeypatch):
+    _use_tmp(tmp_path, monkeypatch)
+    cl.mark_working("A")            # -> red
+    cl.mark_working("B")            # -> red
+    cl.mark_idle("A")              # B still working -> red
+    assert cl._applied[-1] == "BUSY"
+    cl.mark_idle("B")             # all idle -> green
+    assert cl._applied[-1] == "AVAILABLE"
 
 
-def test_enable_disable_toggles_flag(tmp_path, monkeypatch):
-    _point_flag_at(tmp_path, monkeypatch)
-    monkeypatch.setattr(cl, "_best_effort_set", lambda state: None)
-    cl.enable()
-    assert cl.is_on() is True
-    cl.disable()
-    assert cl.is_on() is False
-    cl.disable()  # idempotent, no raise
+def test_sessionend_removes_session(tmp_path, monkeypatch):
+    _use_tmp(tmp_path, monkeypatch)
+    cl.mark_working("A")
+    cl.mark_sessionend("A")       # gone -> green
+    assert cl._applied[-1] == "AVAILABLE"
 
 
-def test_best_effort_set_swallows_all_errors(tmp_path, monkeypatch):
-    _point_flag_at(tmp_path, monkeypatch)
-    def _boom():
-        raise RuntimeError("no ports")
-    monkeypatch.setattr(cl, "find_busylight_ports", _boom)
-    # Must not raise even if enumeration blows up.
-    assert cl._best_effort_set("BUSY") is False
+def test_stale_working_pruned(tmp_path, monkeypatch):
+    _use_tmp(tmp_path, monkeypatch)
+    monkeypatch.setattr(cl, "_ttl_seconds", lambda: 100.0)
+    times = iter([1000.0, 1000.0, 2000.0, 2000.0])
+    monkeypatch.setattr(cl, "_now", lambda: next(times))
+    cl.mark_working("A")           # ts=1000
+    # A is now 1000s old > 100s TTL -> pruned -> green
+    assert cl._desired_state(cl._load_state()) == "AVAILABLE"
 
 
-def test_best_effort_set_swallows_per_port_errors(tmp_path, monkeypatch):
-    _point_flag_at(tmp_path, monkeypatch)
-    monkeypatch.setattr(cl, "find_busylight_ports", lambda: ["COM_X", "COM_Y"])
-
-    class _Boom:
-        def __init__(self, port):
-            pass
-
-        def set_state(self, state):
-            raise RuntimeError("no ack")
-
-    monkeypatch.setattr(cl, "SerialClient", _Boom)
-    assert cl._best_effort_set("BUSY") is False  # both ports fail -> False, no raise
+def test_focus_binds_to_one_session(tmp_path, monkeypatch):
+    _use_tmp(tmp_path, monkeypatch)
+    cl.mark_working("A")
+    cl.mark_working("B")
+    cl.set_focus("B")             # focus B
+    cl.mark_idle("B")            # focused idle -> green even though A works
+    assert cl._applied[-1] == "AVAILABLE"
+    cl.clear_focus()             # back to aggregate; A still works -> red
+    assert cl._applied[-1] == "BUSY"
 
 
-def test_best_effort_set_returns_true_on_first_success(tmp_path, monkeypatch):
-    _point_flag_at(tmp_path, monkeypatch)
-    monkeypatch.setattr(cl, "find_busylight_ports", lambda: ["COM_X"])
-
-    class _Ok:
-        def __init__(self, port):
-            pass
-
-        def set_state(self, state):
-            pass
-
-    monkeypatch.setattr(cl, "SerialClient", _Ok)
-    assert cl._best_effort_set("BUSY") is True
+def test_focus_manual_picks_most_recent(tmp_path, monkeypatch):
+    _use_tmp(tmp_path, monkeypatch)
+    t = iter([10.0, 20.0, 30.0, 30.0, 30.0, 30.0])
+    monkeypatch.setattr(cl, "_now", lambda: next(t))
+    cl.mark_working("A")           # ts=10
+    cl.mark_working("B")           # ts=20
+    assert cl.set_focus("manual") == "B"   # most-recent active
 
 
-def test_cli_working_exits_zero_even_with_no_device(tmp_path, monkeypatch):
-    _point_flag_at(tmp_path, monkeypatch)
-    monkeypatch.setattr(cl, "find_busylight_ports", lambda: [])
-    cl.enable()
-    assert cl.main(["working"]) == 0
-    assert cl.main(["idle"]) == 0
-    assert cl.main(["status"]) == 0
+def test_read_session_id_manual_on_tty(monkeypatch):
+    class _TTY:
+        def isatty(self):
+            return True
+    monkeypatch.setattr("sys.stdin", _TTY())
+    assert cl._read_session_id() == "manual"
+
+
+def test_read_session_id_from_stdin_json(monkeypatch):
+    import io
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps({"session_id": "sess-42"})))
+    assert cl._read_session_id() == "sess-42"
+
+
+def test_cli_all_subcommands_exit_zero(tmp_path, monkeypatch):
+    _use_tmp(tmp_path, monkeypatch)
+    monkeypatch.setattr(cl, "_read_session_id", lambda: "A")
+    for sub in ["on", "working", "idle", "sessionend", "focus", "unfocus", "status", "off"]:
+        assert cl.main([sub]) == 0
+    assert cl.main(["bogus"]) == 2
