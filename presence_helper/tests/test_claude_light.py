@@ -126,3 +126,25 @@ def test_cli_all_subcommands_exit_zero(tmp_path, monkeypatch):
         assert cl.main([sub]) == 0
     assert cl.main(["focus", "SID"]) == 0     # positional focus
     assert cl.main(["bogus"]) == 2
+
+
+def test_state_lock_is_best_effort(tmp_path, monkeypatch):
+    _use_tmp(tmp_path, monkeypatch)
+    monkeypatch.setattr(cl.os, "open", lambda *a, **k: (_ for _ in ()).throw(OSError("no")))
+    cl.mark_working("A", "/p/a")   # must not raise even if the lock can't be taken
+    assert "A" in cl._load_state()["sessions"]
+
+
+def test_load_state_collapses_focus_on_old_schema(tmp_path, monkeypatch):
+    _use_tmp(tmp_path, monkeypatch)
+    # An old-schema file (no valid "sessions") must not surface a phantom focus.
+    cl.state_path().write_text('{"working": {"X": 1.0}, "focus": "X"}', encoding="utf-8")
+    st = cl._load_state()
+    assert st == {"sessions": {}, "focus": None}
+
+
+def test_label_fallback_when_no_cwd(tmp_path, monkeypatch):
+    _use_tmp(tmp_path, monkeypatch)
+    cl.mark_idle("A", None)        # no cwd -> label "session"
+    s = cl.status()
+    assert s["sessions"][0]["label"] == "session"

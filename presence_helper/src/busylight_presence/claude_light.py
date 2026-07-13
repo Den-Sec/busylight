@@ -116,16 +116,17 @@ def _load_state() -> dict:
     try:
         data = json.loads(state_path().read_text(encoding="utf-8"))
         raw = data.get("sessions") if isinstance(data, dict) else None
+        if not isinstance(raw, dict):
+            return {"sessions": {}, "focus": None}
         sessions: dict = {}
-        if isinstance(raw, dict):
-            for sid, v in raw.items():
-                if isinstance(v, dict) and isinstance(v.get("ts"), (int, float)):
-                    sessions[sid] = {
-                        "cwd": v.get("cwd") if isinstance(v.get("cwd"), str) else None,
-                        "status": "working" if v.get("status") == "working" else "idle",
-                        "ts": v["ts"],
-                    }
-        focus = data.get("focus") if isinstance(data, dict) else None
+        for sid, v in raw.items():
+            if isinstance(v, dict) and isinstance(v.get("ts"), (int, float)):
+                sessions[sid] = {
+                    "cwd": v.get("cwd") if isinstance(v.get("cwd"), str) else None,
+                    "status": "working" if v.get("status") == "working" else "idle",
+                    "ts": v["ts"],
+                }
+        focus = data.get("focus")
         return {"sessions": sessions, "focus": focus if isinstance(focus, str) else None}
     except Exception:  # noqa: BLE001
         return {"sessions": {}, "focus": None}
