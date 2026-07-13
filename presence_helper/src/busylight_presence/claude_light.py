@@ -9,6 +9,7 @@ a Claude Code turn.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import sys
@@ -42,6 +43,52 @@ def flag_path() -> Path:
 
 def state_path() -> Path:
     return _default_config_path().parent / "claude_state.json"
+
+
+def _lock_path() -> Path:
+    return _default_config_path().parent / "claude_state.lock"
+
+
+@contextlib.contextmanager
+def _state_lock():
+    """Best-effort cross-process lock around the state read-modify-write.
+    Never blocks a hook: after a short spin it proceeds unlocked, and it
+    steals a stale lock (an orphan left by a crashed process)."""
+    lock = _lock_path()
+    fd = None
+    try:
+        lock.parent.mkdir(parents=True, exist_ok=True)
+    except Exception:  # noqa: BLE001
+        pass
+    # Use the wall clock directly (not _now(), which tests monkeypatch to a
+    # finite sequence for business-logic timestamps) for lock spin timing.
+    deadline = time.time() + 1.0  # spin at most ~1s
+    while fd is None and time.time() < deadline:
+        try:
+            fd = os.open(str(lock), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            # Steal a stale lock (older than 10s) left by a dead process.
+            try:
+                if time.time() - os.path.getmtime(lock) > 10.0:
+                    os.unlink(lock)
+                    continue
+            except OSError:
+                pass
+            time.sleep(0.02)
+        except OSError:
+            break  # can't lock here — proceed unlocked (best-effort)
+    try:
+        yield
+    finally:
+        if fd is not None:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+            try:
+                os.unlink(lock)
+            except OSError:
+                pass
 
 
 def is_on() -> bool:
@@ -81,7 +128,9 @@ def _save_state(state: dict) -> None:
     try:
         p = state_path()
         p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(json.dumps(state), encoding="utf-8")
+        tmp = p.with_suffix(p.suffix + ".tmp")
+        tmp.write_text(json.dumps(state), encoding="utf-8")
+        os.replace(tmp, p)
     except Exception:  # noqa: BLE001
         pass
 
@@ -147,55 +196,61 @@ def disable() -> None:
         pass
     except Exception:  # noqa: BLE001
         pass
-    _save_state({"working": {}, "focus": None})
+    with _state_lock():
+        _save_state({"working": {}, "focus": None})
 
 
 def mark_working(sid: str) -> None:
     if not is_on():
         return
-    st = _load_state()
-    st["working"][sid] = _now()
-    _save_state(st)
+    with _state_lock():
+        st = _load_state()
+        st["working"][sid] = _now()
+        _save_state(st)
     _apply(st)
 
 
 def mark_idle(sid: str) -> None:
     if not is_on():
         return
-    st = _load_state()
-    st["working"].pop(sid, None)
-    _save_state(st)
+    with _state_lock():
+        st = _load_state()
+        st["working"].pop(sid, None)
+        _save_state(st)
     _apply(st)
 
 
 def mark_sessionend(sid: str) -> None:
     if not is_on():
         return
-    st = _load_state()
-    st["working"].pop(sid, None)
-    if st.get("focus") == sid:
-        st["focus"] = None
-    _save_state(st)
+    with _state_lock():
+        st = _load_state()
+        st["working"].pop(sid, None)
+        if st.get("focus") == sid:
+            st["focus"] = None
+        _save_state(st)
     _apply(st)
 
 
 def set_focus(sid: str | None) -> str | None:
-    st = _prune(_load_state())
-    if sid and sid != "manual":
-        st["focus"] = sid
-    elif st["working"]:
-        st["focus"] = max(st["working"], key=lambda k: st["working"][k])
-    else:
-        st["focus"] = None
-    _save_state(st)
+    with _state_lock():
+        st = _prune(_load_state())
+        if sid and sid != "manual":
+            st["focus"] = sid
+        elif st["working"]:
+            st["focus"] = max(st["working"], key=lambda k: st["working"][k])
+        else:
+            st["focus"] = None
+        _save_state(st)
     _apply(st)
     return st["focus"]
 
 
 def clear_focus() -> None:
-    st = _load_state()
-    st["focus"] = None
-    _save_state(st)
+    with _state_lock():
+        st = _load_state()
+        st["focus"] = None
+        _save_state(st)
     _apply(st)
 
 

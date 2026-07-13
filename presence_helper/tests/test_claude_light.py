@@ -9,6 +9,7 @@ import busylight_presence.claude_light as cl
 def _use_tmp(tmp_path, monkeypatch, *, on=True):
     monkeypatch.setattr(cl, "flag_path", lambda: tmp_path / "claude_mode")
     monkeypatch.setattr(cl, "state_path", lambda: tmp_path / "claude_state.json")
+    monkeypatch.setattr(cl, "_lock_path", lambda: tmp_path / "claude_state.lock")
     monkeypatch.setattr(cl, "_best_effort_set", lambda state: cl._applied.append(state))
     cl._applied = []
     if on:
@@ -81,6 +82,24 @@ def test_read_session_id_from_stdin_json(monkeypatch):
     import io
     monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps({"session_id": "sess-42"})))
     assert cl._read_session_id() == "sess-42"
+
+
+def test_concurrent_updates_do_not_lose_sessions(tmp_path, monkeypatch):
+    _use_tmp(tmp_path, monkeypatch)
+    # Interleave: A working, B working, A idle -> B must remain working.
+    cl.mark_working("A")
+    cl.mark_working("B")
+    cl.mark_idle("A")
+    st = cl._load_state()
+    assert "B" in st["working"] and "A" not in st["working"]
+    assert cl._applied[-1] == "BUSY"   # B still working
+
+
+def test_state_lock_is_best_effort(tmp_path, monkeypatch):
+    _use_tmp(tmp_path, monkeypatch)
+    monkeypatch.setattr(cl.os, "open", lambda *a, **k: (_ for _ in ()).throw(OSError("no")))
+    cl.mark_working("A")   # must not raise
+    assert "A" in cl._load_state()["working"]
 
 
 def test_cli_all_subcommands_exit_zero(tmp_path, monkeypatch):
