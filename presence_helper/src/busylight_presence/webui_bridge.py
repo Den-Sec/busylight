@@ -83,7 +83,7 @@ def claude_mode_status() -> dict:
     return claude_light.status()
 
 
-def claude_mode_action(action: str) -> dict:
+def claude_mode_action(action: str, session: str | None = None) -> dict:
     """Pure, testable helper: apply a Claude-mode action, return new status."""
     from . import claude_light
     if action == "on":
@@ -91,7 +91,10 @@ def claude_mode_action(action: str) -> dict:
     elif action == "off":
         claude_light.disable()
     elif action == "focus":
-        claude_light.set_focus(None)  # most-recently-active
+        if session:
+            claude_light.set_focus(session)
+        else:
+            claude_light.clear_focus()
     elif action == "unfocus":
         claude_light.clear_focus()
     return claude_light.status()
@@ -282,7 +285,9 @@ class _BridgeHandler(BaseHTTPRequestHandler):
         if path == "/api/claude-mode":
             body = self._read_json_body()
             action = (body.get("action") or "").strip()
-            return self._send_json(200, claude_mode_action(action))
+            session = body.get("session")
+            session = session if isinstance(session, str) and session else None
+            return self._send_json(200, claude_mode_action(action, session))
         self._send_json(404, {"error": "not_found"})
 
     def _api_post_pin(self) -> None:
