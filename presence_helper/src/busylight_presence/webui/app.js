@@ -548,6 +548,12 @@ const dayButtons = document.querySelectorAll("[data-day]");
 let pendingScheduleDays = 0;  // bitmask 0..127 (bit0=Sun .. bit6=Sat)
 let cachedSchedule = { entries: [], max: 4 };
 
+const claudeToggle = document.getElementById("claude-toggle");
+const claudeStatus = document.getElementById("claude-status");
+const claudeStatusMeta = document.getElementById("claude-status-meta");
+const claudeFocusBtn = document.getElementById("claude-focus");
+const claudeMsg = document.getElementById("claude-msg");
+
 const mqttEnabled = document.getElementById("mqtt-enabled");
 const mqttHost = document.getElementById("mqtt-host");
 const mqttPort = document.getElementById("mqtt-port");
@@ -1022,6 +1028,41 @@ async function saveMqtt() {
   }
 }
 
+// ---------- Claude mode ----------
+
+async function refreshClaude() {
+  if (!claudeToggle) return;
+  try {
+    const s = await api("/api/claude-mode");
+    claudeToggle.checked = !!s.on;
+    if (claudeStatusMeta) claudeStatusMeta.textContent = s.on ? "On" : "Off";
+    const st = s.on
+      ? s.focus
+        ? `focused on ${String(s.focus).slice(0, 8)}…`
+        : s.working
+          ? `${s.working} session(s) working`
+          : "idle"
+      : "off";
+    if (claudeStatus) claudeStatus.textContent = st;
+  } catch (err) {
+    if (err.status === 401) return;
+    if (claudeMsg) claudeMsg.textContent = err.message;
+  }
+}
+
+async function claudeAction(action) {
+  try {
+    await api("/api/claude-mode", {
+      method: "POST",
+      body: JSON.stringify({ action }),
+    });
+    if (claudeMsg) claudeMsg.textContent = "";
+  } catch (err) {
+    if (claudeMsg) claudeMsg.textContent = err.message;
+  }
+  await refreshClaude();
+}
+
 async function refreshSettings() {
   const data = await api("/api/settings");
   tHost.textContent = data.hostname || "--";
@@ -1043,6 +1084,7 @@ async function initSession() {
     await refreshWifiList();
     await refreshSchedule();
     await refreshMqtt();
+    await refreshClaude();
     showApp();
   } catch (err) {
     if (err.status === 401) {
@@ -1064,6 +1106,7 @@ function startPeriodicRefresh() {
     if (consoleGrid.classList.contains("hidden")) return;
     try {
       await refreshState();
+      await refreshClaude();
     } catch {
       // ignore transient errors
     }
@@ -1357,6 +1400,14 @@ if (wifiNewPassword) {
 
 if (mqttSaveBtn) {
   mqttSaveBtn.addEventListener("click", saveMqtt);
+}
+
+if (claudeToggle) {
+  claudeToggle.addEventListener("change", (e) =>
+    claudeAction(e.target.checked ? "on" : "off"));
+}
+if (claudeFocusBtn) {
+  claudeFocusBtn.addEventListener("click", () => claudeAction("focus"));
 }
 
 // ============ Language switcher ============

@@ -77,6 +77,26 @@ def _load_asset(name: str) -> Optional[bytes]:
     return data
 
 
+def claude_mode_status() -> dict:
+    """Pure, testable helper: current Claude-mode status (no HTTP)."""
+    from . import claude_light
+    return claude_light.status()
+
+
+def claude_mode_action(action: str) -> dict:
+    """Pure, testable helper: apply a Claude-mode action, return new status."""
+    from . import claude_light
+    if action == "on":
+        claude_light.enable()
+    elif action == "off":
+        claude_light.disable()
+    elif action == "focus":
+        claude_light.set_focus(None)  # most-recently-active
+    elif action == "unfocus":
+        claude_light.clear_focus()
+    return claude_light.status()
+
+
 def _content_type(filename: str) -> str:
     if filename.endswith(".html"):
         return "text/html; charset=utf-8"
@@ -185,6 +205,8 @@ class _BridgeHandler(BaseHTTPRequestHandler):
             return self._send_json(503, {"error": "schedule_needs_wifi"})
         if path == "/api/mqtt":
             return self._send_json(503, {"error": "mqtt_needs_wifi"})
+        if path == "/api/claude-mode":
+            return self._send_json(200, claude_mode_status())
         self._send_json(404, {"error": "not_found"})
 
     def _api_get_state(self) -> None:
@@ -257,6 +279,10 @@ class _BridgeHandler(BaseHTTPRequestHandler):
                     "/api/device/reboot",
                     "/api/firmware/update"):
             return self._send_json(503, {"error": "needs_wifi_or_dedicated_flow"})
+        if path == "/api/claude-mode":
+            body = self._read_json_body()
+            action = (body.get("action") or "").strip()
+            return self._send_json(200, claude_mode_action(action))
         self._send_json(404, {"error": "not_found"})
 
     def _api_post_pin(self) -> None:

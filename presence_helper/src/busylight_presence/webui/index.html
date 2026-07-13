@@ -298,6 +298,27 @@
           </div>
         </section>
 
+        <!-- CLAUDE MODE -->
+        <section class="block" id="claude-card">
+          <header class="block-head">
+            <h2>Claude mode</h2>
+            <span class="block-sub" id="claude-status-meta">Off</span>
+          </header>
+          <div class="block-body">
+            <p class="lede lede--sm">
+              Shows red while a Claude Code session is working and green when
+              idle, driven by Claude Code hooks.
+            </p>
+            <label class="mqtt-toggle">
+              <input id="claude-toggle" type="checkbox" />
+              <span>Enable Claude mode</span>
+            </label>
+            <p class="lede lede--sm" id="claude-status">—</p>
+            <button id="claude-focus" type="button" class="ghost">Focus current session</button>
+            <p class="msg" id="claude-msg" role="status"></p>
+          </div>
+        </section>
+
         <!-- MQTT -->
         <section class="block">
           <header class="block-head">

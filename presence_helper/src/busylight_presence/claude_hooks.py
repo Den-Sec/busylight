@@ -15,6 +15,7 @@ _EVENTS = {
     "UserPromptSubmit": "working",
     "Stop": "idle",
     "SessionStart": "idle",
+    "SessionEnd": "sessionend",
 }
 
 
@@ -56,7 +57,7 @@ def install_hooks(path: Path | None = None) -> None:
         matchers = hooks.setdefault(event, [])
         existing = [h["command"] for m in matchers for h in m.get("hooks", [])]
         if cmd not in existing:
-            matchers.append({"hooks": [{"type": "command", "command": cmd}]})
+            matchers.append({"hooks": [{"type": "command", "command": cmd, "timeout": 5}]})
     path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 
