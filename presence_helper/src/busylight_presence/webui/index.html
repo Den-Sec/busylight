@@ -314,7 +314,12 @@
               <span>Enable Claude mode</span>
             </label>
             <p class="lede lede--sm" id="claude-status">—</p>
-            <button id="claude-focus" type="button" class="ghost">Focus current session</button>
+            <div class="field">
+              <label for="claude-focus-select">Which session drives the light</label>
+              <select id="claude-focus-select">
+                <option value="">All sessions (aggregate)</option>
+              </select>
+            </div>
             <p class="msg" id="claude-msg" role="status"></p>
           </div>
         </section>

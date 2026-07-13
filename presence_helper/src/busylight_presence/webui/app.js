@@ -551,7 +551,7 @@ let cachedSchedule = { entries: [], max: 4 };
 const claudeToggle = document.getElementById("claude-toggle");
 const claudeStatus = document.getElementById("claude-status");
 const claudeStatusMeta = document.getElementById("claude-status-meta");
-const claudeFocusBtn = document.getElementById("claude-focus");
+const claudeFocusSelect = document.getElementById("claude-focus-select");
 const claudeMsg = document.getElementById("claude-msg");
 
 const mqttEnabled = document.getElementById("mqtt-enabled");
@@ -1044,17 +1044,30 @@ async function refreshClaude() {
           : "idle"
       : "off";
     if (claudeStatus) claudeStatus.textContent = st;
+    if (claudeFocusSelect) {
+      const cur = s.focus || "";
+      const opts = ['<option value="">All sessions (aggregate)</option>'];
+      for (const sess of s.sessions || []) {
+        const sel = sess.id === s.focus ? " selected" : "";
+        const mark = sess.status === "working" ? "● " : "○ ";
+        opts.push(
+          `<option value="${sess.id}"${sel}>${mark}${sess.label} — ${sess.status}</option>`
+        );
+      }
+      claudeFocusSelect.innerHTML = opts.join("");
+      claudeFocusSelect.value = cur;
+    }
   } catch (err) {
     if (err.status === 401) return;
     if (claudeMsg) claudeMsg.textContent = err.message;
   }
 }
 
-async function claudeAction(action) {
+async function claudeAction(action, session) {
   try {
     await api("/api/claude-mode", {
       method: "POST",
-      body: JSON.stringify({ action }),
+      body: JSON.stringify(session === undefined ? { action } : { action, session }),
     });
     if (claudeMsg) claudeMsg.textContent = "";
   } catch (err) {
@@ -1406,8 +1419,9 @@ if (claudeToggle) {
   claudeToggle.addEventListener("change", (e) =>
     claudeAction(e.target.checked ? "on" : "off"));
 }
-if (claudeFocusBtn) {
-  claudeFocusBtn.addEventListener("click", () => claudeAction("focus"));
+if (claudeFocusSelect) {
+  claudeFocusSelect.addEventListener("change", (e) =>
+    claudeAction("focus", e.target.value));
 }
 
 // ============ Language switcher ============

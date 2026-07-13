@@ -1,20 +1,28 @@
-# presence_helper/tests/test_bridge_claude.py
 from __future__ import annotations
 
 import busylight_presence.webui_bridge as wb
 
 
-def test_claude_mode_get_post(monkeypatch):
-    # Drive the pure endpoint helpers directly (no HTTP server needed).
+def test_claude_mode_on_off_and_focus(monkeypatch):
     import busylight_presence.claude_light as cl
-    state = {"on": False}
-    monkeypatch.setattr(cl, "is_on", lambda: state["on"])
-    monkeypatch.setattr(cl, "enable", lambda: state.__setitem__("on", True))
-    monkeypatch.setattr(cl, "disable", lambda: state.__setitem__("on", False))
-    monkeypatch.setattr(cl, "status", lambda: {"on": state["on"], "working": 0, "focus": None})
+    calls = {"focus": None, "cleared": 0, "on": False}
+    monkeypatch.setattr(cl, "is_on", lambda: calls["on"])
+    monkeypatch.setattr(cl, "enable", lambda: calls.__setitem__("on", True))
+    monkeypatch.setattr(cl, "disable", lambda: calls.__setitem__("on", False))
+    monkeypatch.setattr(cl, "set_focus", lambda sid: calls.__setitem__("focus", sid))
+    monkeypatch.setattr(
+        cl, "clear_focus", lambda: calls.__setitem__("cleared", calls["cleared"] + 1)
+    )
+    monkeypatch.setattr(cl, "status", lambda: {"on": calls["on"], "focus": calls["focus"],
+                                               "working": 0, "sessions": []})
 
-    assert wb.claude_mode_status()["on"] is False
     wb.claude_mode_action("on")
-    assert wb.claude_mode_status()["on"] is True
-    wb.claude_mode_action("off")
-    assert wb.claude_mode_status()["on"] is False
+    assert calls["on"] is True
+    wb.claude_mode_action("focus", "SESS-9")     # focus a specific session
+    assert calls["focus"] == "SESS-9"
+    wb.claude_mode_action("focus", None)         # empty session -> clear
+    assert calls["cleared"] == 1
+    wb.claude_mode_action("unfocus")
+    assert calls["cleared"] == 2
+    s = wb.claude_mode_status()
+    assert "sessions" in s
