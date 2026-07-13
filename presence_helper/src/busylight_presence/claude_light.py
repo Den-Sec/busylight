@@ -115,13 +115,20 @@ def _best_effort_set(state: str) -> bool:
 def _load_state() -> dict:
     try:
         data = json.loads(state_path().read_text(encoding="utf-8"))
-        working = data.get("working") if isinstance(data, dict) else None
-        if not isinstance(working, dict):
-            working = {}
+        raw = data.get("sessions") if isinstance(data, dict) else None
+        sessions: dict = {}
+        if isinstance(raw, dict):
+            for sid, v in raw.items():
+                if isinstance(v, dict) and isinstance(v.get("ts"), (int, float)):
+                    sessions[sid] = {
+                        "cwd": v.get("cwd") if isinstance(v.get("cwd"), str) else None,
+                        "status": "working" if v.get("status") == "working" else "idle",
+                        "ts": v["ts"],
+                    }
         focus = data.get("focus") if isinstance(data, dict) else None
-        return {"working": working, "focus": focus}
+        return {"sessions": sessions, "focus": focus if isinstance(focus, str) else None}
     except Exception:  # noqa: BLE001
-        return {"working": {}, "focus": None}
+        return {"sessions": {}, "focus": None}
 
 
 def _save_state(state: dict) -> None:
@@ -138,42 +145,47 @@ def _save_state(state: dict) -> None:
 def _prune(state: dict) -> dict:
     ttl = _ttl_seconds()
     now = _now()
-    state["working"] = {
-        sid: ts
-        for sid, ts in state["working"].items()
-        if isinstance(ts, (int, float)) and (now - ts) <= ttl
+    state["sessions"] = {
+        sid: s
+        for sid, s in state["sessions"].items()
+        if isinstance(s.get("ts"), (int, float)) and (now - s["ts"]) <= ttl
     }
     return state
 
 
-def _read_session_id() -> str:
-    """session_id from a hook's stdin JSON; never blocks on a manual (tty)
-    run."""
+def _read_hook_input() -> tuple[str, str | None]:
+    """(session_id, cwd) from a hook's stdin JSON; never blocks on a manual
+    (tty) run."""
     try:
         stdin = sys.stdin
         if stdin is None or stdin.isatty():
-            return "manual"
+            return "manual", None
         raw = stdin.read()
     except Exception:  # noqa: BLE001
-        return "manual"
+        return "manual", None
     if not raw:
-        return "manual"
+        return "manual", None
     try:
-        sid = json.loads(raw).get("session_id")
-        return sid if isinstance(sid, str) and sid else "manual"
+        obj = json.loads(raw)
+        sid = obj.get("session_id")
+        cwd = obj.get("cwd")
+        sid = sid if isinstance(sid, str) and sid else "manual"
+        cwd = cwd if isinstance(cwd, str) and cwd else None
+        return sid, cwd
     except Exception:  # noqa: BLE001
-        return "manual"
+        return "manual", None
 
 
 def _desired_state(state: dict) -> str | None:
     if not is_on():
         return None
     state = _prune(state)
+    sessions = state["sessions"]
     focus = state.get("focus")
-    working = state["working"]
-    if focus:
-        return _WORKING if focus in working else _IDLE
-    return _WORKING if working else _IDLE
+    if focus and focus in sessions:
+        return _WORKING if sessions[focus]["status"] == "working" else _IDLE
+    any_working = any(s["status"] == "working" for s in sessions.values())
+    return _WORKING if any_working else _IDLE
 
 
 def _apply(state: dict) -> None:
@@ -197,25 +209,34 @@ def disable() -> None:
     except Exception:  # noqa: BLE001
         pass
     with _state_lock():
-        _save_state({"working": {}, "focus": None})
+        _save_state({"sessions": {}, "focus": None})
 
 
-def mark_working(sid: str) -> None:
+def _upsert(st: dict, sid: str, cwd: str | None, status: str) -> None:
+    prev = st["sessions"].get(sid, {})
+    st["sessions"][sid] = {
+        "cwd": cwd if cwd is not None else prev.get("cwd"),
+        "status": status,
+        "ts": _now(),
+    }
+
+
+def mark_working(sid: str, cwd: str | None = None) -> None:
     if not is_on():
         return
     with _state_lock():
         st = _load_state()
-        st["working"][sid] = _now()
+        _upsert(st, sid, cwd, "working")
         _save_state(st)
     _apply(st)
 
 
-def mark_idle(sid: str) -> None:
+def mark_idle(sid: str, cwd: str | None = None) -> None:
     if not is_on():
         return
     with _state_lock():
         st = _load_state()
-        st["working"].pop(sid, None)
+        _upsert(st, sid, cwd, "idle")
         _save_state(st)
     _apply(st)
 
@@ -225,7 +246,7 @@ def mark_sessionend(sid: str) -> None:
         return
     with _state_lock():
         st = _load_state()
-        st["working"].pop(sid, None)
+        st["sessions"].pop(sid, None)
         if st.get("focus") == sid:
             st["focus"] = None
         _save_state(st)
@@ -234,16 +255,11 @@ def mark_sessionend(sid: str) -> None:
 
 def set_focus(sid: str | None) -> str | None:
     with _state_lock():
-        st = _prune(_load_state())
-        if sid and sid != "manual":
-            st["focus"] = sid
-        elif st["working"]:
-            st["focus"] = max(st["working"], key=lambda k: st["working"][k])
-        else:
-            st["focus"] = None
+        st = _load_state()
+        st["focus"] = sid if (sid and sid != "manual") else None
         _save_state(st)
     _apply(st)
-    return st["focus"]
+    return st.get("focus")
 
 
 def clear_focus() -> None:
@@ -254,9 +270,33 @@ def clear_focus() -> None:
     _apply(st)
 
 
+def _label_for(sid: str, cwd: str | None) -> str:
+    if cwd:
+        base = os.path.basename(cwd.rstrip("/\\"))
+        return base or cwd
+    return "session"
+
+
 def status() -> dict:
     st = _prune(_load_state())
-    return {"on": is_on(), "working": len(st["working"]), "focus": st.get("focus")}
+    sessions = st["sessions"]
+    bases: dict[str, list[str]] = {}
+    for sid, s in sessions.items():
+        bases.setdefault(_label_for(sid, s.get("cwd")), []).append(sid)
+    items = []
+    for sid, s in sorted(sessions.items(), key=lambda kv: kv[1]["ts"], reverse=True):
+        base = _label_for(sid, s.get("cwd"))
+        label = base if len(bases[base]) == 1 else f"{base} ({sid[:4]})"
+        items.append({
+            "id": sid, "label": label, "cwd": s.get("cwd"), "status": s["status"],
+        })
+    working = sum(1 for s in sessions.values() if s["status"] == "working")
+    return {
+        "on": is_on(),
+        "focus": st.get("focus"),
+        "working": working,
+        "sessions": items,
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -267,13 +307,20 @@ def main(argv: list[str] | None = None) -> int:
     elif sub == "off":
         disable()
     elif sub == "working":
-        mark_working(_read_session_id())
+        sid, cwd = _read_hook_input()
+        mark_working(sid, cwd)
     elif sub == "idle":
-        mark_idle(_read_session_id())
+        sid, cwd = _read_hook_input()
+        mark_idle(sid, cwd)
     elif sub == "sessionend":
-        mark_sessionend(_read_session_id())
+        sid, _cwd = _read_hook_input()
+        mark_sessionend(sid)
     elif sub == "focus":
-        set_focus(_read_session_id())
+        if len(args) > 1:
+            set_focus(args[1])
+        else:
+            sid, _cwd = _read_hook_input()
+            set_focus(sid)
     elif sub == "unfocus":
         clear_focus()
     elif sub == "status":
