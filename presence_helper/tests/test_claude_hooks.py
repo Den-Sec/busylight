@@ -37,3 +37,18 @@ def test_uninstall_removes_only_our_hooks(tmp_path, monkeypatch):
     assert "other-tool" in stop_cmds                       # foreign hook kept
     assert "busylight-claude idle" not in stop_cmds        # ours removed
     assert "UserPromptSubmit" not in data["hooks"] or not data["hooks"]["UserPromptSubmit"]
+
+
+def test_install_adds_sessionend_and_timeout(tmp_path, monkeypatch):
+    settings = tmp_path / "settings.json"
+    monkeypatch.setattr(ch, "hook_command", lambda: "busylight-claude")
+    ch.install_hooks(settings)
+    data = json.loads(settings.read_text(encoding="utf-8"))
+    # SessionEnd wired to `sessionend`
+    se = [h["command"] for m in data["hooks"]["SessionEnd"] for h in m["hooks"]]
+    assert "busylight-claude sessionend" in se
+    # every installed hook has a fast timeout
+    for event in ("UserPromptSubmit", "Stop", "SessionStart", "SessionEnd"):
+        for m in data["hooks"][event]:
+            for h in m["hooks"]:
+                assert h.get("timeout") == 5
