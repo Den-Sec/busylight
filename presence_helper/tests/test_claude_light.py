@@ -84,7 +84,7 @@ def test_read_session_id_from_stdin_json(monkeypatch):
     assert cl._read_session_id() == "sess-42"
 
 
-def test_concurrent_updates_do_not_lose_sessions(tmp_path, monkeypatch):
+def test_interleaved_updates_keep_correct_set(tmp_path, monkeypatch):
     _use_tmp(tmp_path, monkeypatch)
     # Interleave: A working, B working, A idle -> B must remain working.
     cl.mark_working("A")
@@ -93,6 +93,20 @@ def test_concurrent_updates_do_not_lose_sessions(tmp_path, monkeypatch):
     st = cl._load_state()
     assert "B" in st["working"] and "A" not in st["working"]
     assert cl._applied[-1] == "BUSY"   # B still working
+
+
+def test_mutation_happens_under_lock(tmp_path, monkeypatch):
+    _use_tmp(tmp_path, monkeypatch)
+    seen = {}
+    real_save = cl._save_state
+    def spy_save(state):
+        # the lock file must exist while we are writing state
+        seen["locked_during_save"] = cl._lock_path().exists()
+        return real_save(state)
+    monkeypatch.setattr(cl, "_save_state", spy_save)
+    cl.mark_working("A")
+    assert seen["locked_during_save"] is True     # save ran while lock held
+    assert not cl._lock_path().exists()           # lock released afterwards
 
 
 def test_state_lock_is_best_effort(tmp_path, monkeypatch):
